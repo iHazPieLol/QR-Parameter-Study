@@ -8,7 +8,8 @@ from PIL import Image
 import csv
 import itertools
 import os
-
+from skimage.transform import resize
+from sklearn.preprocessing import MinMaxScaler
 
 def generate_qr_code_array(data, version=1, error_correction='L', box_size=10, border=0, fill_color="black", back_color="white"):
     """Generates a QR code for the given data and returns it as a NumPy array.
@@ -77,8 +78,8 @@ def render_sphere_kernel(
     camera_distance_mm,
     focal_length_mm,
     sphere_rotation_degrees,
-    image_width_pixels,
-    image_height_pixels,
+    camera_width_pixels,
+    camera_height_pixels,
     sensor_width_mm,
     sensor_height_mm
 ):
@@ -88,7 +89,7 @@ def render_sphere_kernel(
     qr_size = qr_array.shape[0]
     radius_mm = sphere_diameter_mm / 2.0
 
-    aspect_ratio = image_width_pixels / image_height_pixels
+    aspect_ratio = camera_width_pixels / camera_height_pixels
     # Adjust sensor width based on aspect ratio to maintain the correct field of view
     # if the rendered image aspect ratio differs from the sensor aspect ratio.
     # However, here we map directly to pixel coordinates, so sensor dimensions are crucial.
@@ -112,14 +113,14 @@ def render_sphere_kernel(
     ratio = min(max(ratio, -1.0), 1.0)  # Clamp to [-1, 1]
     half_angle = math.asin(ratio)
 
-    for py in prange(image_height_pixels):
+    for py in prange(camera_height_pixels):
         # Map pixel coordinates to normalized sensor coordinates [-1, 1]
-        ndc_y = (py + 0.5) / image_height_pixels  # [0,1]
+        ndc_y = (py + 0.5) / camera_height_pixels  # [0,1]
         sensor_y = (1.0 - 2.0 * ndc_y) * (sensor_height_mm / 2.0)
 
-        for px in range(image_width_pixels):
+        for px in range(camera_width_pixels):
             # Map pixel coordinates to normalized sensor coordinates [-1, 1]
-            ndc_x = (px + 0.5) / image_width_pixels  # [0,1]
+            ndc_x = (px + 0.5) / camera_width_pixels  # [0,1]
             sensor_x = (2.0 * ndc_x - 1.0) * (sensor_width_mm / 2.0)
 
             sensor_z = 0.0 # Sensor plane is at z=0 in camera space
@@ -231,8 +232,8 @@ def render_sphere_with_qr(
     camera_distance_mm,
     focal_length_mm,
     sphere_rotation_degrees,
-    image_width_pixels,
-    image_height_pixels,
+    camera_width_pixels,
+    camera_height_pixels,
     output_dir,
     filename,
     sensor_width_mm,
@@ -250,7 +251,7 @@ def render_sphere_with_qr(
     qr_array = generate_qr_code_array(data_to_encode)
 
     # Initialize the output image array (height, width, 3)
-    output_array = np.zeros((image_height_pixels, image_width_pixels, 3), dtype=np.uint8)
+    output_array = np.zeros((camera_height_pixels, camera_width_pixels, 3), dtype=np.uint8)
 
     # Call the Numba-accelerated rendering kernel
     render_sphere_kernel(
@@ -261,8 +262,8 @@ def render_sphere_with_qr(
         camera_distance_mm,
         focal_length_mm,
         sphere_rotation_degrees,
-        image_width_pixels,
-        image_height_pixels,
+        camera_width_pixels,
+        camera_height_pixels,
         sensor_width_mm,
         sensor_height_mm
     )
@@ -274,8 +275,34 @@ def render_sphere_with_qr(
     # Combine directory and filename
     full_path = os.path.join(output_dir, filename)
 
-    # Convert the NumPy array to a PIL Image and save
-    output_img = Image.fromarray(output_array, 'RGB')
+    print(f"Size of full image: {output_array.shape}")
+
+    # Downsample and crop the image to match the viewfinder of the phone
+    if simulate_device_viewfinder == True:
+        # Downsample the image to an equivalent resolution
+        downsample_width_pixels = device_display_width_pixels
+        downsample_ratio = downsample_width_pixels / camera_width_pixels
+        downsample_height_pixels = int(downsample_ratio * camera_height_pixels)
+        downsampled_image = resize(output_array, (downsample_height_pixels, downsample_width_pixels, 3), anti_aliasing=True)
+
+        # Convert from float [0,1] to uint8 [0,255]
+        downsampled_image = (downsampled_image * 255).astype(np.uint8)  # Correct conversion
+
+        import matplotlib.pyplot as plt
+        plt.imshow(downsampled_image)
+        plt.show()
+
+        print(f"Size of downsampled image: {downsampled_image.shape}")
+        print(f"Type of downsampled image: {type(downsampled_image)}")
+
+        # Crop the image to the correct aspect ratio
+        output_img = Image.fromarray(downsampled_image, 'RGB')
+
+    elif simulate_device_viewfinder == False:
+        # Convert the NumPy array to a PIL Image
+        output_img = Image.fromarray(output_array, 'RGB')
+    
+    # Save the image
     output_img.save(full_path, "PNG")
     print(f"Saved {full_path}")
     return full_path  # Return full path
@@ -294,10 +321,14 @@ output_directory = r"Images"  # ← Change this to your desired folder
 camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
 focal_length_mm = 5.7 # The true focal length (mm) of the camera, not the 35mm equivalent. This value can be found by uploading a photo from the camera to an EXIF data viewer such as www.jimpl.com and looking for the "Focal length" setting.
 sphere_rotation_degrees = 180.0 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
-image_width_pixels = 3024 # Output image width
-image_height_pixels = 4032 # Output image height
+camera_width_pixels = 3024 # Number of pixels in the width of a photo that the camera can produce
+camera_height_pixels = 4032 # Number of pixels in the height of a photo the the camera can produce
 sensor_width_mm = 5.7456 # Width of the physical sensor. This can be found in various ways. On Android, the app "Device Info HW" from the Google Play store has this information. Alternatively, if you know the pixel size (in micrometres), multiply that by the number of pixels in length and width of the photo.
 sensor_height_mm = 7.6608
+simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
+device_display_width_pixels = 2778 # The number of pixels that make up the phone display
+device_display_height_pixels = 1284
+viewfinder_aspect_ratio = 4/3 # Aspect ratio that the viewfinder is set to on the phone e.g. 4:3 --> 4/3
 
 csv_file = "rendered_spheres_mm_TEMP.csv"
 
@@ -305,11 +336,11 @@ csv_file = "rendered_spheres_mm_TEMP.csv"
 
 # Check that orientation of sensor w&h and image w&h matches camera orientation
 if camera_orientation == 'portrait':
-    if image_width_pixels > image_height_pixels:
-        image_width_pixels, image_height_pixels = image_height_pixels, image_width_pixels
+    if camera_width_pixels > camera_height_pixels:
+        camera_width_pixels, camera_height_pixels = camera_height_pixels, camera_width_pixels
 elif camera_orientation == 'landscape':
-    if image_width_pixels < image_height_pixels:
-        image_width_pixels, image_height_pixels = image_height_pixels, image_width_pixels
+    if camera_width_pixels < camera_height_pixels:
+        camera_width_pixels, camera_height_pixels = camera_height_pixels, camera_width_pixels
 
 if camera_orientation == 'portrait':
     if sensor_width_mm > sensor_height_mm:
@@ -318,10 +349,17 @@ elif camera_orientation == 'landscape':
     if sensor_width_mm < sensor_height_mm:
         sensor_width_mm, sensor_height_mm = sensor_height_mm, sensor_width_mm
 
+if camera_orientation == 'portrait':
+    if device_display_width_pixels > device_display_height_pixels:
+        device_display_width_pixels, device_display_height_pixels = device_display_height_pixels, device_display_width_pixels
+elif camera_orientation == 'landscape':
+    if device_display_width_pixels < device_display_height_pixels:
+       device_display_width_pixels, device_display_height_pixels = device_display_height_pixels, device_display_width_pixels
+
 
 fieldnames = ['diameter_mm', 'qr_side_length_mm', 'camera_distance_mm', 
                 'focal_length_mm', 'sphere_rotation_degrees', 
-                'image_width_pixels', 'image_height_pixels', 'filename']
+                'camera_width_pixels', 'camera_height_pixels', 'filename']
 
 with open(csv_file, 'w', newline='') as csvfile:
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -345,8 +383,8 @@ with open(csv_file, 'w', newline='') as csvfile:
             camera_distance_mm=camera_dist_mm,
             focal_length_mm=focal_length_mm,
             sphere_rotation_degrees=sphere_rotation_degrees,
-            image_width_pixels=image_width_pixels,
-            image_height_pixels=image_height_pixels,
+            camera_width_pixels=camera_width_pixels,
+            camera_height_pixels=camera_height_pixels,
             output_dir=output_directory,
             filename=filename,
             sensor_width_mm = sensor_width_mm,
@@ -360,8 +398,8 @@ with open(csv_file, 'w', newline='') as csvfile:
             'camera_distance_mm': camera_dist_mm,
             'focal_length_mm': focal_length_mm,
             'sphere_rotation_degrees': sphere_rotation_degrees,
-            'image_width_pixels': image_width_pixels,
-            'image_height_pixels': image_height_pixels,
+            'camera_width_pixels': camera_width_pixels,
+            'camera_height_pixels': camera_height_pixels,
             'filename': full_path  # Record full path in CSV
         })
 
