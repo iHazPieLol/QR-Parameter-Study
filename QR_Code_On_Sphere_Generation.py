@@ -78,7 +78,9 @@ def render_sphere_kernel(
     focal_length_mm,
     sphere_rotation_degrees,
     image_width_pixels,
-    image_height_pixels
+    image_height_pixels,
+    sensor_width_mm,
+    sensor_height_mm
 ):
     """
     Numba-accelerated function to render the sphere with QR code. All length units are in millimeters.
@@ -86,9 +88,6 @@ def render_sphere_kernel(
     qr_size = qr_array.shape[0]
     radius_mm = sphere_diameter_mm / 2.0
 
-    # Assuming a sensor size (e.g., width) in mm. Adjust as needed for different sensors.
-    sensor_width_mm = 5.7  # Example: Assuming a full-frame sensor width
-    sensor_height_mm = 7.6 # Example: Assuming a full-frame sensor height
     aspect_ratio = image_width_pixels / image_height_pixels
     # Adjust sensor width based on aspect ratio to maintain the correct field of view
     # if the rendered image aspect ratio differs from the sensor aspect ratio.
@@ -228,14 +227,16 @@ def render_sphere_kernel(
 
 def render_sphere_with_qr(
     sphere_diameter_mm,
-    qr_side_length_mm=20.0,
-    camera_distance_mm=300.0,
-    focal_length_mm=16.0,
-    sphere_rotation_degrees=180.0,
-    image_width_pixels=3024,
-    image_height_pixels=4032,
-    output_dir="rendered_spheres",  # New parameter
-    filename=None
+    qr_side_length_mm,
+    camera_distance_mm,
+    focal_length_mm,
+    sphere_rotation_degrees,
+    image_width_pixels,
+    image_height_pixels,
+    output_dir,
+    filename,
+    sensor_width_mm,
+    sensor_height_mm
 ):
     """
     Render a sphere with a QR code sticker using Numba for acceleration.
@@ -261,7 +262,9 @@ def render_sphere_with_qr(
         focal_length_mm,
         sphere_rotation_degrees,
         image_width_pixels,
-        image_height_pixels
+        image_height_pixels,
+        sensor_width_mm,
+        sensor_height_mm
     )
 
     # Generate filename if not provided
@@ -277,64 +280,89 @@ def render_sphere_with_qr(
     print(f"Saved {full_path}")
     return full_path  # Return full path
 
-if __name__ == "__main__":
-    # Parameters to iterate through
-    diameters_mm = [50]
-    qr_side_lengths_mm = [21]
-    camera_distances_mm = [390]
-    
-    # Set your custom output folder here
-    output_directory = r"Images"  # ← Change this to your desired folder
+###################### SETTINGS ########################
 
-    # Fixed parameters
-    focal_length_mm = 5.8
-    sphere_rotation_degrees = 180.0
-    image_width_pixels = 3024
-    image_height_pixels = 4032
+# Parameters to iterate through
+diameters_mm = [50]
+qr_side_lengths_mm = [21]
+camera_distances_mm = [390]
 
-    csv_file = "rendered_spheres_mm_TEMP.csv"
-    fieldnames = ['diameter_mm', 'qr_side_length_mm', 'camera_distance_mm', 
-                  'focal_length_mm', 'sphere_rotation_degrees', 
-                  'image_width_pixels', 'image_height_pixels', 'filename']
+# Set your custom output folder here
+output_directory = r"Images"  # ← Change this to your desired folder
 
-    with open(csv_file, 'w', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
+# Camera parameters
+camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
+focal_length_mm = 5.7 # The true focal length (mm) of the camera, not the 35mm equivalent. This value can be found by uploading a photo from the camera to an EXIF data viewer such as www.jimpl.com and looking for the "Focal length" setting.
+sphere_rotation_degrees = 180.0 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
+image_width_pixels = 3024 # Output image width
+image_height_pixels = 4032 # Output image height
+sensor_width_mm = 5.7456 # Width of the physical sensor. This can be found in various ways. On Android, the app "Device Info HW" from the Google Play store has this information. Alternatively, if you know the pixel size (in micrometres), multiply that by the number of pixels in length and width of the photo.
+sensor_height_mm = 7.6608
 
-        # Iterate through all parameter combinations
-        for diameter_mm, qr_side_mm, camera_dist_mm in itertools.product(
-            diameters_mm, qr_side_lengths_mm, camera_distances_mm
-        ):
-            # Generate filename with all parameters
-            filename = (
-                f"sphere_d_{diameter_mm:.1f}mm_"
-                f"qr_{qr_side_mm:.1f}mm_"
-                f"cam_{camera_dist_mm:.1f}mm.png"
-            )
-            
-            # Render the sphere with current parameters
-            full_path = render_sphere_with_qr(
-                sphere_diameter_mm=diameter_mm,
-                qr_side_length_mm=qr_side_mm,
-                camera_distance_mm=camera_dist_mm,
-                focal_length_mm=focal_length_mm,
-                sphere_rotation_degrees=sphere_rotation_degrees,
-                image_width_pixels=image_width_pixels,
-                image_height_pixels=image_height_pixels,
-                output_dir=output_directory,
-                filename=filename
-            )
-            
-            # Write parameters to CSV
-            writer.writerow({
-                'diameter_mm': diameter_mm,
-                'qr_side_length_mm': qr_side_mm,
-                'camera_distance_mm': camera_dist_mm,
-                'focal_length_mm': focal_length_mm,
-                'sphere_rotation_degrees': sphere_rotation_degrees,
-                'image_width_pixels': image_width_pixels,
-                'image_height_pixels': image_height_pixels,
-                'filename': full_path  # Record full path in CSV
-            })
+csv_file = "rendered_spheres_mm_TEMP.csv"
 
-    print(f"Parameters and filenames recorded in {csv_file}")
+################### END OF SETTINGS #####################
+
+# Check that orientation of sensor w&h and image w&h matches camera orientation
+if camera_orientation == 'portrait':
+    if image_width_pixels > image_height_pixels:
+        image_width_pixels, image_height_pixels = image_height_pixels, image_width_pixels
+elif camera_orientation == 'landscape':
+    if image_width_pixels < image_height_pixels:
+        image_width_pixels, image_height_pixels = image_height_pixels, image_width_pixels
+
+if camera_orientation == 'portrait':
+    if sensor_width_mm > sensor_height_mm:
+        sensor_width_mm, sensor_height_mm = sensor_height_mm, sensor_width_mm
+elif camera_orientation == 'landscape':
+    if sensor_width_mm < sensor_height_mm:
+        sensor_width_mm, sensor_height_mm = sensor_height_mm, sensor_width_mm
+
+
+fieldnames = ['diameter_mm', 'qr_side_length_mm', 'camera_distance_mm', 
+                'focal_length_mm', 'sphere_rotation_degrees', 
+                'image_width_pixels', 'image_height_pixels', 'filename']
+
+with open(csv_file, 'w', newline='') as csvfile:
+    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    writer.writeheader()
+
+    # Iterate through all parameter combinations
+    for diameter_mm, qr_side_mm, camera_dist_mm in itertools.product(
+        diameters_mm, qr_side_lengths_mm, camera_distances_mm
+    ):
+        # Generate filename with all parameters
+        filename = (
+            f"sphere_d_{diameter_mm:.1f}mm_"
+            f"qr_{qr_side_mm:.1f}mm_"
+            f"cam_{camera_dist_mm:.1f}mm.png"
+        )
+        
+        # Render the sphere with current parameters
+        full_path = render_sphere_with_qr(
+            sphere_diameter_mm=diameter_mm,
+            qr_side_length_mm=qr_side_mm,
+            camera_distance_mm=camera_dist_mm,
+            focal_length_mm=focal_length_mm,
+            sphere_rotation_degrees=sphere_rotation_degrees,
+            image_width_pixels=image_width_pixels,
+            image_height_pixels=image_height_pixels,
+            output_dir=output_directory,
+            filename=filename,
+            sensor_width_mm = sensor_width_mm,
+            sensor_height_mm = sensor_height_mm
+        )
+        
+        # Write parameters to CSV
+        writer.writerow({
+            'diameter_mm': diameter_mm,
+            'qr_side_length_mm': qr_side_mm,
+            'camera_distance_mm': camera_dist_mm,
+            'focal_length_mm': focal_length_mm,
+            'sphere_rotation_degrees': sphere_rotation_degrees,
+            'image_width_pixels': image_width_pixels,
+            'image_height_pixels': image_height_pixels,
+            'filename': full_path  # Record full path in CSV
+        })
+
+print(f"Parameters and filenames recorded in {csv_file}")
