@@ -1,6 +1,6 @@
 import math
 import numpy as np
-from math import sin, cos, radians, sqrt
+from math import radians
 from PIL import Image
 from numba import njit, prange
 import qrcode
@@ -9,7 +9,6 @@ import csv
 import itertools
 import os
 from skimage.transform import resize
-from sklearn.preprocessing import MinMaxScaler
 
 def generate_qr_code_array(data, version=1, error_correction='L', box_size=10, border=0, fill_color="black", back_color="white"):
     """Generates a QR code for the given data and returns it as a NumPy array.
@@ -108,10 +107,7 @@ def render_sphere_kernel(
     half_qr_length_mm = qr_side_length_mm / 2.0
 
     # Angle subtended by half the QR sticker at the center of the sphere
-    #half_angle = half_qr_length_mm / radius_mm # OLD
-    ratio = half_qr_length_mm / radius_mm
-    ratio = min(max(ratio, -1.0), 1.0)  # Clamp to [-1, 1]
-    half_angle = math.asin(ratio)
+    half_angle = half_qr_length_mm / radius_mm  # Use arc length directly
 
     for py in prange(camera_height_pixels):
         # Map pixel coordinates to normalized sensor coordinates [-1, 1]
@@ -312,7 +308,7 @@ def render_sphere_with_qr(
 # Parameters to iterate through
 diameters_mm = [50]
 qr_side_lengths_mm = [21]
-camera_distances_mm = [390]
+camera_distances_mm = [200]
 
 # Set your custom output folder here
 output_directory = r"Images"  # ← Change this to your desired folder
