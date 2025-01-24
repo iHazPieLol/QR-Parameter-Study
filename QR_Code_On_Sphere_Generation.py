@@ -9,6 +9,7 @@ import csv
 import itertools
 import os
 from skimage.transform import resize
+import matplotlib.pyplot as plt
 
 def generate_qr_code_array(data, version=1, error_correction='L', box_size=10, border=1, fill_color="black", back_color="white"):
     """Generates a QR code for the given data and returns it as a NumPy array.
@@ -173,6 +174,39 @@ def render_sphere_kernel(
                 shade = int(50 + 200*ndotl)
                 output_array[py, px] = min(max(shade, 0), 255)
 
+@njit
+def crop_center(img, crop_width, crop_height):
+    """Crops an image around its center.
+
+    Args:
+        img (np.ndarray): The image array (height, width, channels).
+        crop_width (int): The desired width of the cropped image.
+        crop_height (int): The desired height of the cropped image.
+
+    Returns:
+        np.ndarray: The cropped image.
+    """
+
+    height, width = img.shape[0:2] # Get height and width from the first two dimensions
+    center_x = width // 2
+    center_y = height // 2
+
+    start_x = center_x - crop_width // 2
+    start_y = center_y - crop_height // 2
+    end_x = start_x + crop_width
+    end_y = start_y + crop_height
+
+
+    #Handle edges to ensure we are not out of bounds
+    start_x = max(0, start_x)
+    start_y = max(0, start_y)
+    end_x = min(width, end_x)
+    end_y = min(height, end_y)
+
+    cropped_img = img[start_y:end_y, start_x:end_x]
+
+    return cropped_img
+
 def render_sphere_with_qr(
     sphere_diameter_mm,
     qr_side_length_mm,
@@ -224,6 +258,11 @@ def render_sphere_with_qr(
 
     print(f"Size of full image: {output_array.shape}")
 
+    # Perform digital zooming by cropping the image and then upscaling it
+    output_array = crop_center(output_array, crop_width=int(camera_width_pixels / digital_zoom), crop_height=int(camera_height_pixels / digital_zoom)) # Crop the image
+    output_array = resize(output_array, (camera_width_pixels, camera_height_pixels)) # Upsample it back to original size
+    output_array = (output_array * 255).astype(np.uint8) # Scale array back to 0-255 rgb range
+
     # Downsample and crop the image to match the viewfinder of the phone
     if simulate_device_viewfinder == True:
         # Downsample the image to an equivalent resolution
@@ -235,24 +274,29 @@ def render_sphere_with_qr(
         # Convert from float [0,1] to uint8 [0,255]
         downsampled_image = (downsampled_image * 255).astype(np.uint8)  # Correct conversion
 
-        import matplotlib.pyplot as plt
-        plt.imshow(downsampled_image)
-        plt.show()
-
-        print(f"Size of downsampled image: {downsampled_image.shape}")
-        print(f"Type of downsampled image: {type(downsampled_image)}")
+        if show_image == True:
+            plt.imshow(downsampled_image)
+            plt.show()
 
         # Crop the image to the correct aspect ratio
+        #   Implement this...
+
         output_img = Image.fromarray(downsampled_image, 'RGB')
 
     elif simulate_device_viewfinder == False:
+        
+        if show_image == True:
+            plt.imshow(downsampled_image)
+            plt.show()
+        
         # Convert the NumPy array to a PIL Image
         output_img = Image.fromarray(output_array, 'RGB')
     
     # Save the image
-    output_img.save(full_path, "PNG")
-    print(f"Saved {full_path}")
-    return full_path  # Return full path
+    if export_image == True:
+        output_img.save(full_path, "PNG")
+        print(f"Saved {full_path}")
+        return full_path  # Return full path
 
 ###################### SETTINGS ########################
 
@@ -285,6 +329,8 @@ device_parameters = {
         'device_display_height_pixels': 1284
     }
 }
+show_image = True # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
+export_image = False # Export the generated image?
 camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
 sphere_rotation_degrees = 180.0 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
 simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
