@@ -82,7 +82,9 @@ def render_sphere_kernel(
     camera_height_pixels,
     sensor_width_mm,
     sensor_height_mm,
-    noise_level
+    noise_level,
+    ambient_light_intensity,
+    diffuse_light_intensity
 ):
     qr_size = qr_array.shape[0]
     radius_mm = sphere_diameter_mm / 2.0
@@ -145,12 +147,25 @@ def render_sphere_kernel(
             nx, ny, nz = normalize_nb(ix - sphere_center_x, iy - sphere_center_y, iz - sphere_center_z)
             nx, ny, nz = rotate_y_nb(nx, ny, nz, sphere_rotation_degrees)
 
+            # Lighting Calculation
+            # Assume light source is coming from the camera's position (for simplicity)
+            lx, ly, lz = normalize_nb(-cam_origin_x, -cam_origin_y, -cam_origin_z)  # Light direction
+
+            # Diffuse component
+            ndotl = max(0.0, nx*lx + ny*ly + nz*lz)
+            diffuse = diffuse_light_intensity * ndotl
+
+            # Ambient component (minimum light level)
+            ambient = ambient_light_intensity
+
+            # Total light intensity
+            light_intensity = ambient + diffuse
+
             # Front-face check and tangent projection
             if nz <= 1e-6:  # Back face or edge case
-                ndotl = max(0.0, nz)
-                shade = int(50 + 200*ndotl)
+                shade = int(255 * light_intensity)
 
-                 # Add noise
+                # Add noise
                 noise = np.random.normal(0, noise_level)
                 shade = int(shade + noise)
 
@@ -172,18 +187,16 @@ def render_sphere_kernel(
                 # Clamp and sample
                 qr_u = max(0, min(qr_size-1, qr_u))
                 qr_v = max(0, min(qr_size-1, qr_v))
-                gray = qr_array[qr_v, qr_u]
+                gray = qr_array[qr_v, qr_u] * light_intensity # Scale QR code pixel by light intensity
 
                 # Add noise
                 noise = np.random.normal(0, noise_level)
                 gray = int(gray + noise)
 
                 output_array[py, px] = min(max(gray, 0), 255)
-
             else:
-                # Lambert shading
-                ndotl = max(0.0, nz)
-                shade = int(50 + 200*ndotl)
+                # Lambert shading (using calculated light_intensity)
+                shade = int(255 * light_intensity)
 
                 # Add noise
                 noise = np.random.normal(0, noise_level)
@@ -235,7 +248,9 @@ def render_sphere_with_qr(
     filename,
     sensor_width_mm,
     sensor_height_mm,
-    noise_level
+    noise_level,
+    ambient_light_intensity,
+    diffuse_light_intensity
 ):
     """
     Render a sphere with a QR code sticker using Numba for acceleration.
@@ -264,7 +279,9 @@ def render_sphere_with_qr(
         camera_height_pixels,
         sensor_width_mm,
         sensor_height_mm,
-        noise_level
+        noise_level,
+        ambient_light_intensity,
+        diffuse_light_intensity
     )
 
     # Generate filename if not provided
@@ -322,10 +339,11 @@ def render_sphere_with_qr(
 diameters_mm = [50] # List of diameters of the sphere
 qr_side_lengths_mm = [21] # List of the QR code side length
 camera_distances_mm = [100] # List of distances that the camera exists from the front-most face of the sphere
-noise_levels = [1000] # Amount of noise to add (standard deviation of Gaussian noise)
+noise_levels = [0]
+ambient_light_intensities = [0.1, 0.5]  # Range from 0 (no ambient light) to 1
+diffuse_light_intensities = [0.9, 0.5]   # Range from 0 (no diffuse light) to 1
 
-# Set your custom output folder here
-output_directory = r"Images"  # ← Change this to your desired folder
+output_directory = r"Images"  # ← Change this to your desired output folder
 
 # Camera parameters --> Can add information for new devices into here
 device_parameters = {
@@ -405,52 +423,56 @@ elif camera_orientation == 'landscape':
        device_display_width_pixels, device_display_height_pixels = device_display_height_pixels, device_display_width_pixels
 
 fieldnames = ['diameter_mm', 'qr_side_length_mm', 'camera_distance_mm', 
-                'focal_length_mm', 'sphere_rotation_degrees', 
-                'camera_width_pixels', 'camera_height_pixels', 'noise_level', 'filename']
+              'focal_length_mm', 'sphere_rotation_degrees', 
+              'camera_width_pixels', 'camera_height_pixels', 
+              'noise_level', 'ambient_light_intensity', 
+              'diffuse_light_intensity', 'filename']
 
 with open(csv_file, 'w', newline='') as csvfile:
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
     writer.writeheader()
 
-    # Iterate through all parameter combinations
-    for diameter_mm, qr_side_mm, camera_dist_mm, noise_level in itertools.product(
-        diameters_mm, qr_side_lengths_mm, camera_distances_mm, noise_levels
-    ):
-        # Generate filename with all parameters
-        filename = (
-            f"sphere_d_{diameter_mm:.1f}mm_"
-            f"qr_{qr_side_mm:.1f}mm_"
-            f"cam_{camera_dist_mm:.1f}mm_"
-            f"noise_{noise_level:.1f}.png"
-        )
-        
-        # Render the sphere with current parameters
-        full_path = render_sphere_with_qr(
-            sphere_diameter_mm=diameter_mm,
-            qr_side_length_mm=qr_side_mm,
-            camera_distance_mm=camera_dist_mm,
-            focal_length_mm=focal_length_mm,
-            sphere_rotation_degrees=sphere_rotation_degrees,
-            camera_width_pixels=camera_width_pixels,
-            camera_height_pixels=camera_height_pixels,
-            output_dir=output_directory,
-            filename=filename,
-            sensor_width_mm = sensor_width_mm,
-            sensor_height_mm = sensor_height_mm,
-            noise_level=noise_level
-        )
-        
-        # Write parameters to CSV
-        writer.writerow({
-            'diameter_mm': diameter_mm,
-            'qr_side_length_mm': qr_side_mm,
-            'camera_distance_mm': camera_dist_mm,
-            'focal_length_mm': focal_length_mm,
-            'sphere_rotation_degrees': sphere_rotation_degrees,
-            'camera_width_pixels': camera_width_pixels,
-            'camera_height_pixels': camera_height_pixels,
-            'noise_level': noise_level,
-            'filename': full_path  # Record full path in CSV
-        })
+    for diameter_mm, qr_side_mm, camera_dist_mm, noise_level, ambient_light_intensity, diffuse_light_intensity in itertools.product(
+            diameters_mm, qr_side_lengths_mm, camera_distances_mm, noise_levels, ambient_light_intensities, diffuse_light_intensities
+        ):
+            filename = (
+                f"sphere_d_{diameter_mm:.1f}mm_"
+                f"qr_{qr_side_mm:.1f}mm_"
+                f"cam_{camera_dist_mm:.1f}mm_"
+                f"noise_{noise_level:.1f}_"
+                f"ambient_{ambient_light_intensity:.1f}_"
+                f"diffuse_{diffuse_light_intensity:.1f}.png"
+            )
+
+            full_path = render_sphere_with_qr(
+                sphere_diameter_mm=diameter_mm,
+                qr_side_length_mm=qr_side_mm,
+                camera_distance_mm=camera_dist_mm,
+                focal_length_mm=focal_length_mm,
+                sphere_rotation_degrees=sphere_rotation_degrees,
+                camera_width_pixels=camera_width_pixels,
+                camera_height_pixels=camera_height_pixels,
+                output_dir=output_directory,
+                filename=filename,
+                sensor_width_mm=sensor_width_mm,
+                sensor_height_mm=sensor_height_mm,
+                noise_level=noise_level,
+                ambient_light_intensity=ambient_light_intensity,
+                diffuse_light_intensity=diffuse_light_intensity
+            )
+
+            writer.writerow({
+                'diameter_mm': diameter_mm,
+                'qr_side_length_mm': qr_side_mm,
+                'camera_distance_mm': camera_dist_mm,
+                'focal_length_mm': focal_length_mm,
+                'sphere_rotation_degrees': sphere_rotation_degrees,
+                'camera_width_pixels': camera_width_pixels,
+                'camera_height_pixels': camera_height_pixels,
+                'noise_level': noise_level,
+                'ambient_light_intensity': ambient_light_intensity,
+                'diffuse_light_intensity': diffuse_light_intensity,
+                'filename': full_path
+            })
 
 print(f"Parameters and filenames recorded in {csv_file}")
