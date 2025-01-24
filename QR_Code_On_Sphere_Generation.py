@@ -92,19 +92,37 @@ def render_sphere_kernel(
     radius_mm = sphere_diameter_mm / 2.0
 
     # Sphere center in world coordinates (mm)
-    sphere_center_x = 0.0
-    sphere_center_y = 0.0
     sphere_center_z = camera_distance_mm - focal_length_mm
 
     # Camera origin in world coordinates (mm)
-    cam_origin_x = 0.0
-    cam_origin_y = 0.0
     cam_origin_z = -focal_length_mm
+
+    # Precompute constants for ray-sphere intersection
+    ox = 0.0
+    oy = 0.0
+    oz = cam_origin_z - sphere_center_z  # Simplified to -camera_distance_mm
+    radius_sq = radius_mm ** 2
+    oz_sq = oz ** 2
+    c_sphere = oz_sq - radius_sq
+
+    # Precompute light direction (0,0,1)
+    lx, ly, lz = 0.0, 0.0, 1.0
+
+    # Precompute rotation parameters
+    angle = radians(sphere_rotation_degrees)
+    cos_a = math.cos(angle)
+    sin_a = math.sin(angle)
 
     # QR sticker angular size calculations
     half_qr_length_mm = qr_side_length_mm / 2.0
     theta = half_qr_length_mm / radius_mm  # Angular half-size (radians)
-    half_angle = math.tan(theta)  # Projection scale factor
+    half_angle = math.tan(theta)
+    two_half_angle = 2.0 * half_angle
+    inv_two_half_angle = 1.0 / two_half_angle
+
+    # Precompute inverse QR size for UV mapping
+    qr_size_minus_1 = qr_size - 1
+    inv_qr_size_minus_1 = 1.0 / qr_size_minus_1 if qr_size_minus_1 != 0 else 0.0
 
     for py in prange(camera_height_pixels):
         ndc_y = (py + 0.5) / camera_height_pixels
@@ -115,70 +133,60 @@ def render_sphere_kernel(
             sensor_x = (2.0 * ndc_x - 1.0) * (sensor_width_mm / 2.0)
 
             # Ray direction calculation (view vector)
-            rx = sensor_x - cam_origin_x
-            ry = sensor_y - cam_origin_y
-            rz = 0.0 - cam_origin_z
-            vx, vy, vz = normalize_nb(rx, ry, rz)  # View vector
+            rx = sensor_x
+            ry = sensor_y
+            rz = -cam_origin_z  # Since cam_origin_z is -focal_length_mm, rz becomes focal_length_mm
+            vx, vy, vz = normalize_nb(rx, ry, rz)
 
-            # Ray-sphere intersection
-            ox = cam_origin_x - sphere_center_x
-            oy = cam_origin_y - sphere_center_y
-            oz = cam_origin_z - sphere_center_z
-
-            a = vx**2 + vy**2 + vz**2  # Should be 1.0 for normalized vectors
-            b = 2.0 * (ox*vx + oy*vy + oz*vz)
-            c = ox**2 + oy**2 + oz**2 - radius_mm**2
-            disc = b**2 - 4.0*a*c
+            # Ray-sphere intersection with precomputed constants
+            b = 2.0 * (ox * vx + oy * vy + oz * vz)
+            disc = b * b - 4.0 * (oz_sq - radius_sq)
 
             if disc < 0.0:
                 output_array[py, px] = 255
                 continue
 
             sqrt_disc = math.sqrt(disc)
-            t_hit = (-b - sqrt_disc) / (2.0*a)
+            t_hit = (-b - sqrt_disc) * 0.5
             if t_hit < 0.0:
-                t_hit = (-b + sqrt_disc) / (2.0*a)
+                t_hit = (-b + sqrt_disc) * 0.5
                 if t_hit < 0.0:
                     output_array[py, px] = 255
                     continue
 
             # Intersection point and normal
-            ix = cam_origin_x + t_hit*vx
-            iy = cam_origin_y + t_hit*vy
-            iz = cam_origin_z + t_hit*vz
-            nx, ny, nz = normalize_nb(ix - sphere_center_x, iy - sphere_center_y, iz - sphere_center_z)
-            nx, ny, nz = rotate_y_nb(nx, ny, nz, sphere_rotation_degrees)
+            ix = t_hit * vx
+            iy = t_hit * vy
+            iz = t_hit * vz + cam_origin_z
+            nx, ny, nz = normalize_nb(ix, iy, iz - sphere_center_z)
 
-            # Lighting Calculation
-            # Light direction (assume light source at camera position)
-            lx, ly, lz = normalize_nb(-cam_origin_x, -cam_origin_y, -cam_origin_z)
+            # Apply rotation using precomputed cos_a and sin_a
+            nx_rot = nx * cos_a + nz * sin_a
+            nz_rot = -nx * sin_a + nz * cos_a
+            ny_rot = ny
+            nx, ny, nz = nx_rot, ny_rot, nz_rot
 
-            # Reflection vector
-            rx, ry, rz = 2.0*(nx*lx + ny*ly + nz*lz)*nx - lx, 2.0*(nx*lx + ny*ly + nz*lz)*ny - ly, 2.0*(nx*lx + ny*ly + nz*lz)*nz - lz
-
-            # Diffuse component
-            ndotl = max(0.0, nx*lx + ny*ly + nz*lz)
+            # Diffuse component (ndotl is just max(nz, 0.0))
+            ndotl = max(0.0, nz)
             diffuse = diffuse_light_intensity * ndotl
 
             # Specular component (Phong model)
-            rdotv = max(0.0, rx*vx + ry*vy + rz*vz)
-            specular = specular_light_intensity * (rdotv ** specular_exponent)
-
-            # Ambient component
-            ambient = ambient_light_intensity
+            rx_spec = 2.0 * nz * nx
+            ry_spec = 2.0 * nz * ny
+            rz_spec = 2.0 * nz * nz - 1.0
+            rdotv = rx_spec * vx + ry_spec * vy + rz_spec * vz
+            specular = specular_light_intensity * (max(0.0, rdotv) ** specular_exponent)
 
             # Total light intensity
-            light_intensity = ambient + diffuse + specular
+            light_intensity = ambient_light_intensity + diffuse + specular
 
             # Front-face check and tangent projection
-            if nz <= 1e-6:  # Back face or edge case
+            if nz <= 1e-6:
+                # Shade with noise
                 shade = int(255 * light_intensity)
-
-                # Add noise
                 noise = np.random.normal(0, noise_level)
-                shade = int(shade + noise)
-
-                output_array[py, px] = min(max(shade, 0), 255)
+                shade = min(max(shade + int(noise), 0), 255)
+                output_array[py, px] = shade
                 continue
 
             # Project onto tangent plane at (0,0,1)
@@ -188,34 +196,27 @@ def render_sphere_kernel(
             # QR region check
             if abs(tx) <= half_angle and abs(ty) <= half_angle:
                 # Map to QR coordinates
-                u = (tx + half_angle) / (2*half_angle)
-                v = (half_angle - ty) / (2*half_angle)  # Flip Y-axis
-                qr_u = int(u * (qr_size-1))
-                qr_v = int(v * (qr_size-1))
+                u = (tx + half_angle) * inv_two_half_angle
+                v = (half_angle - ty) * inv_two_half_angle  # Flip Y-axis
+                qr_u = int(u * qr_size_minus_1)
+                qr_v = int(v * qr_size_minus_1)
 
                 # Clamp and sample
-                qr_u = max(0, min(qr_size-1, qr_u))
-                qr_v = max(0, min(qr_size-1, qr_v))
+                qr_u = max(0, min(qr_size_minus_1, qr_u))
+                qr_v = max(0, min(qr_size_minus_1, qr_v))
 
-                # Specular component does not affect QR code
-                qr_light_intensity = ambient + diffuse
-                gray = qr_array[qr_v, qr_u] * qr_light_intensity  # QR code brightness
-
-                # Add noise
+                # QR code brightness
+                qr_light = ambient_light_intensity + diffuse
+                gray = qr_array[qr_v, qr_u] * qr_light
                 noise = np.random.normal(0, noise_level)
-                gray = int(gray + noise)
-
-                output_array[py, px] = min(max(gray, 0), 255)
-
+                gray = min(max(int(gray + noise), 0), 255)
+                output_array[py, px] = gray
             else:
-                # Shading with specular highlights
+                # Shading with noise
                 shade = int(255 * light_intensity)
-
-                # Add noise
                 noise = np.random.normal(0, noise_level)
-                shade = int(shade + noise)
-
-                output_array[py, px] = min(max(shade, 0), 255)
+                shade = min(max(shade + int(noise), 0), 255)
+                output_array[py, px] = shade
 
 @njit
 def crop_center(img, crop_width, crop_height):
@@ -308,36 +309,45 @@ def render_sphere_with_qr(
     # Combine directory and filename
     full_path = os.path.join(output_dir, filename)
 
-    print(f"Size of full image: {output_array.shape}")
-
-    # Perform digital zooming by cropping the image and then upscaling it
-    output_array = crop_center(output_array, crop_width=int(camera_width_pixels / digital_zoom), crop_height=int(camera_height_pixels / digital_zoom)) # Crop the image
-    output_array = resize(output_array, (camera_width_pixels, camera_height_pixels)) # Upsample it back to original size
-    output_array = (output_array * 255).astype(np.uint8) # Scale array back to 0-255 rgb range
+    # Perform digital zooming using optimized PIL resize
+    crop_w = int(camera_width_pixels / digital_zoom)
+    crop_h = int(camera_height_pixels / digital_zoom)
+    cropped_array = crop_center(output_array, crop_width=crop_w, crop_height=crop_h)
+    
+    # Convert to PIL Image for fast resizing
+    cropped_pil = Image.fromarray(cropped_array)
+    resized_pil = cropped_pil.resize((camera_width_pixels, camera_height_pixels), 
+                                    Image.Resampling.LANCZOS)
+    output_array = np.array(resized_pil)
 
     # Downsample and crop the image to match the viewfinder of the phone
-    if simulate_device_viewfinder == True:
-        # Downsample the image to an equivalent resolution
+    if simulate_device_viewfinder:
+        # Calculate target dimensions
         downsample_width_pixels = device_display_width_pixels
         downsample_ratio = downsample_width_pixels / camera_width_pixels
         downsample_height_pixels = int(downsample_ratio * camera_height_pixels)
-        downsampled_image = resize(output_array, (downsample_height_pixels, downsample_width_pixels, 3), anti_aliasing=True)
+        
+        # Use PIL for fast downsampling
+        output_pil = Image.fromarray(output_array)
+        downsampled_pil = output_pil.resize((downsample_width_pixels, downsample_height_pixels),
+                                           Image.Resampling.LANCZOS)
+        downsampled_image = np.array(downsampled_pil)
 
-        # Convert from float [0,1] to uint8 [0,255]
-        downsampled_image = (downsampled_image * 255).astype(np.uint8)  # Correct conversion
-
-        if show_image == True:
+        if show_image:
             plt.imshow(downsampled_image)
             plt.show()
 
-        # Crop the image to the correct aspect ratio
-        #   Implement this...
-
-        output_img = Image.fromarray(downsampled_image, 'RGB')
-
-    elif simulate_device_viewfinder == False:
-        
-        if show_image == True:
+        # Crop to viewfinder aspect ratio
+        target_width = downsample_width_pixels
+        target_height = int(target_width / viewfinder_aspect_ratio)
+        if target_height > downsample_height_pixels:
+            target_height = downsample_height_pixels
+            target_width = int(target_height * viewfinder_aspect_ratio)
+            
+        cropped_final = crop_center(downsampled_image, target_width, target_height)
+        output_img = Image.fromarray(cropped_final, 'RGB')
+    else:
+        if show_image:
             plt.imshow(output_array)
             plt.show()
         
@@ -345,7 +355,7 @@ def render_sphere_with_qr(
         output_img = Image.fromarray(output_array, 'RGB')
     
     # Save the image
-    if export_image == True:
+    if export_image:
         output_img.save(full_path, "PNG")
         print(f"Saved {full_path}")
         return full_path  # Return full path
@@ -388,12 +398,12 @@ device_parameters = {
     }
 }
 show_image = True # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
-export_image = False # Export the generated image?
+export_image = True # Export the generated image?
 camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
 sphere_rotation_degrees = 180.0 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
 simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
 device = 'iPhone_13_Pro_Max_Ultrawide' # Name of device (must be in device_parameters)
-viewfinder_aspect_ratio = 4/3 # Aspect ratio that the viewfinder is set to on the phone e.g. 4:3 --> 4/3
+viewfinder_aspect_ratio = 3/4 # Aspect ratio of the viewfinder (image width / image height)
 digital_zoom = 1.909090909
 
 csv_file = "rendered_spheres_mm_TEMP.csv"
