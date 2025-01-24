@@ -81,7 +81,8 @@ def render_sphere_kernel(
     camera_width_pixels,
     camera_height_pixels,
     sensor_width_mm,
-    sensor_height_mm
+    sensor_height_mm,
+    noise_level
 ):
     qr_size = qr_array.shape[0]
     radius_mm = sphere_diameter_mm / 2.0
@@ -148,6 +149,11 @@ def render_sphere_kernel(
             if nz <= 1e-6:  # Back face or edge case
                 ndotl = max(0.0, nz)
                 shade = int(50 + 200*ndotl)
+
+                 # Add noise
+                noise = np.random.normal(0, noise_level)
+                shade = int(shade + noise)
+
                 output_array[py, px] = min(max(shade, 0), 255)
                 continue
 
@@ -167,11 +173,22 @@ def render_sphere_kernel(
                 qr_u = max(0, min(qr_size-1, qr_u))
                 qr_v = max(0, min(qr_size-1, qr_v))
                 gray = qr_array[qr_v, qr_u]
-                output_array[py, px] = gray
+
+                # Add noise
+                noise = np.random.normal(0, noise_level)
+                gray = int(gray + noise)
+
+                output_array[py, px] = min(max(gray, 0), 255)
+
             else:
                 # Lambert shading
                 ndotl = max(0.0, nz)
                 shade = int(50 + 200*ndotl)
+
+                # Add noise
+                noise = np.random.normal(0, noise_level)
+                shade = int(shade + noise)
+
                 output_array[py, px] = min(max(shade, 0), 255)
 
 @njit
@@ -196,7 +213,6 @@ def crop_center(img, crop_width, crop_height):
     end_x = start_x + crop_width
     end_y = start_y + crop_height
 
-
     #Handle edges to ensure we are not out of bounds
     start_x = max(0, start_x)
     start_y = max(0, start_y)
@@ -218,7 +234,8 @@ def render_sphere_with_qr(
     output_dir,
     filename,
     sensor_width_mm,
-    sensor_height_mm
+    sensor_height_mm,
+    noise_level
 ):
     """
     Render a sphere with a QR code sticker using Numba for acceleration.
@@ -246,7 +263,8 @@ def render_sphere_with_qr(
         camera_width_pixels,
         camera_height_pixels,
         sensor_width_mm,
-        sensor_height_mm
+        sensor_height_mm,
+        noise_level
     )
 
     # Generate filename if not provided
@@ -286,7 +304,7 @@ def render_sphere_with_qr(
     elif simulate_device_viewfinder == False:
         
         if show_image == True:
-            plt.imshow(downsampled_image)
+            plt.imshow(output_array)
             plt.show()
         
         # Convert the NumPy array to a PIL Image
@@ -301,9 +319,10 @@ def render_sphere_with_qr(
 ###################### SETTINGS ########################
 
 # Parameters to iterate through
-diameters_mm = [50]
-qr_side_lengths_mm = [21]
-camera_distances_mm = [100]
+diameters_mm = [50] # List of diameters of the sphere
+qr_side_lengths_mm = [21] # List of the QR code side length
+camera_distances_mm = [100] # List of distances that the camera exists from the front-most face of the sphere
+noise_levels = [1000] # Amount of noise to add (standard deviation of Gaussian noise)
 
 # Set your custom output folder here
 output_directory = r"Images"  # ← Change this to your desired folder
@@ -329,8 +348,8 @@ device_parameters = {
         'device_display_height_pixels': 1284
     }
 }
-show_image = True # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
-export_image = False # Export the generated image?
+show_image = False # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
+export_image = True # Export the generated image?
 camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
 sphere_rotation_degrees = 180.0 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
 simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
@@ -385,24 +404,24 @@ elif camera_orientation == 'landscape':
     if device_display_width_pixels < device_display_height_pixels:
        device_display_width_pixels, device_display_height_pixels = device_display_height_pixels, device_display_width_pixels
 
-
 fieldnames = ['diameter_mm', 'qr_side_length_mm', 'camera_distance_mm', 
                 'focal_length_mm', 'sphere_rotation_degrees', 
-                'camera_width_pixels', 'camera_height_pixels', 'filename']
+                'camera_width_pixels', 'camera_height_pixels', 'noise_level', 'filename']
 
 with open(csv_file, 'w', newline='') as csvfile:
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
     writer.writeheader()
 
     # Iterate through all parameter combinations
-    for diameter_mm, qr_side_mm, camera_dist_mm in itertools.product(
-        diameters_mm, qr_side_lengths_mm, camera_distances_mm
+    for diameter_mm, qr_side_mm, camera_dist_mm, noise_level in itertools.product(
+        diameters_mm, qr_side_lengths_mm, camera_distances_mm, noise_levels
     ):
         # Generate filename with all parameters
         filename = (
             f"sphere_d_{diameter_mm:.1f}mm_"
             f"qr_{qr_side_mm:.1f}mm_"
-            f"cam_{camera_dist_mm:.1f}mm.png"
+            f"cam_{camera_dist_mm:.1f}mm_"
+            f"noise_{noise_level:.1f}.png"
         )
         
         # Render the sphere with current parameters
@@ -417,7 +436,8 @@ with open(csv_file, 'w', newline='') as csvfile:
             output_dir=output_directory,
             filename=filename,
             sensor_width_mm = sensor_width_mm,
-            sensor_height_mm = sensor_height_mm
+            sensor_height_mm = sensor_height_mm,
+            noise_level=noise_level
         )
         
         # Write parameters to CSV
@@ -429,6 +449,7 @@ with open(csv_file, 'w', newline='') as csvfile:
             'sphere_rotation_degrees': sphere_rotation_degrees,
             'camera_width_pixels': camera_width_pixels,
             'camera_height_pixels': camera_height_pixels,
+            'noise_level': noise_level,
             'filename': full_path  # Record full path in CSV
         })
 
