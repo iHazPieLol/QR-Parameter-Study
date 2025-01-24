@@ -84,7 +84,9 @@ def render_sphere_kernel(
     sensor_height_mm,
     noise_level,
     ambient_light_intensity,
-    diffuse_light_intensity
+    diffuse_light_intensity,
+    specular_light_intensity,
+    specular_exponent
 ):
     qr_size = qr_array.shape[0]
     radius_mm = sphere_diameter_mm / 2.0
@@ -112,19 +114,19 @@ def render_sphere_kernel(
             ndc_x = (px + 0.5) / camera_width_pixels
             sensor_x = (2.0 * ndc_x - 1.0) * (sensor_width_mm / 2.0)
 
-            # Ray direction calculation
+            # Ray direction calculation (view vector)
             rx = sensor_x - cam_origin_x
             ry = sensor_y - cam_origin_y
             rz = 0.0 - cam_origin_z
-            rd_x, rd_y, rd_z = normalize_nb(rx, ry, rz)
+            vx, vy, vz = normalize_nb(rx, ry, rz)  # View vector
 
             # Ray-sphere intersection
             ox = cam_origin_x - sphere_center_x
             oy = cam_origin_y - sphere_center_y
             oz = cam_origin_z - sphere_center_z
 
-            a = rd_x**2 + rd_y**2 + rd_z**2
-            b = 2.0 * (ox*rd_x + oy*rd_y + oz*rd_z)
+            a = vx**2 + vy**2 + vz**2  # Should be 1.0 for normalized vectors
+            b = 2.0 * (ox*vx + oy*vy + oz*vz)
             c = ox**2 + oy**2 + oz**2 - radius_mm**2
             disc = b**2 - 4.0*a*c
 
@@ -141,25 +143,32 @@ def render_sphere_kernel(
                     continue
 
             # Intersection point and normal
-            ix = cam_origin_x + t_hit*rd_x
-            iy = cam_origin_y + t_hit*rd_y
-            iz = cam_origin_z + t_hit*rd_z
+            ix = cam_origin_x + t_hit*vx
+            iy = cam_origin_y + t_hit*vy
+            iz = cam_origin_z + t_hit*vz
             nx, ny, nz = normalize_nb(ix - sphere_center_x, iy - sphere_center_y, iz - sphere_center_z)
             nx, ny, nz = rotate_y_nb(nx, ny, nz, sphere_rotation_degrees)
 
             # Lighting Calculation
-            # Assume light source is coming from the camera's position (for simplicity)
-            lx, ly, lz = normalize_nb(-cam_origin_x, -cam_origin_y, -cam_origin_z)  # Light direction
+            # Light direction (assume light source at camera position)
+            lx, ly, lz = normalize_nb(-cam_origin_x, -cam_origin_y, -cam_origin_z)
+
+            # Reflection vector
+            rx, ry, rz = 2.0*(nx*lx + ny*ly + nz*lz)*nx - lx, 2.0*(nx*lx + ny*ly + nz*lz)*ny - ly, 2.0*(nx*lx + ny*ly + nz*lz)*nz - lz
 
             # Diffuse component
             ndotl = max(0.0, nx*lx + ny*ly + nz*lz)
             diffuse = diffuse_light_intensity * ndotl
 
-            # Ambient component (minimum light level)
+            # Specular component (Phong model)
+            rdotv = max(0.0, rx*vx + ry*vy + rz*vz)
+            specular = specular_light_intensity * (rdotv ** specular_exponent)
+
+            # Ambient component
             ambient = ambient_light_intensity
 
             # Total light intensity
-            light_intensity = ambient + diffuse
+            light_intensity = ambient + diffuse + specular
 
             # Front-face check and tangent projection
             if nz <= 1e-6:  # Back face or edge case
@@ -187,15 +196,19 @@ def render_sphere_kernel(
                 # Clamp and sample
                 qr_u = max(0, min(qr_size-1, qr_u))
                 qr_v = max(0, min(qr_size-1, qr_v))
-                gray = qr_array[qr_v, qr_u] * light_intensity # Scale QR code pixel by light intensity
+
+                # Specular component does not affect QR code
+                qr_light_intensity = ambient + diffuse
+                gray = qr_array[qr_v, qr_u] * qr_light_intensity  # QR code brightness
 
                 # Add noise
                 noise = np.random.normal(0, noise_level)
                 gray = int(gray + noise)
 
                 output_array[py, px] = min(max(gray, 0), 255)
+
             else:
-                # Lambert shading (using calculated light_intensity)
+                # Shading with specular highlights
                 shade = int(255 * light_intensity)
 
                 # Add noise
@@ -250,7 +263,9 @@ def render_sphere_with_qr(
     sensor_height_mm,
     noise_level,
     ambient_light_intensity,
-    diffuse_light_intensity
+    diffuse_light_intensity,
+    specular_light_intensity,
+    specular_exponent
 ):
     """
     Render a sphere with a QR code sticker using Numba for acceleration.
@@ -281,7 +296,9 @@ def render_sphere_with_qr(
         sensor_height_mm,
         noise_level,
         ambient_light_intensity,
-        diffuse_light_intensity
+        diffuse_light_intensity,
+        specular_light_intensity,
+        specular_exponent
     )
 
     # Generate filename if not provided
@@ -336,14 +353,18 @@ def render_sphere_with_qr(
 ###################### SETTINGS ########################
 
 # Parameters to iterate through
-diameters_mm = [50] # List of diameters of the sphere
-qr_side_lengths_mm = [21] # List of the QR code side length
-camera_distances_mm = [100] # List of distances that the camera exists from the front-most face of the sphere
+diameters_mm = [50]
+qr_side_lengths_mm = [21]
+camera_distances_mm = [100]
 noise_levels = [0]
-ambient_light_intensities = [0.1, 0.5]  # Range from 0 (no ambient light) to 1
-diffuse_light_intensities = [0.9, 0.5]   # Range from 0 (no diffuse light) to 1
 
-output_directory = r"Images"  # ← Change this to your desired output folder
+ambient_light_intensities = [0.4]
+diffuse_light_intensities = [0.6]
+specular_light_intensities = [0.5]  # Control the brightness of the highlight
+specular_exponents = [15]        # Control the size of the highlight (smaller = larger highlight)
+
+# Set your custom output folder here
+output_directory = r"Images"
 
 # Camera parameters --> Can add information for new devices into here
 device_parameters = {
@@ -366,8 +387,8 @@ device_parameters = {
         'device_display_height_pixels': 1284
     }
 }
-show_image = False # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
-export_image = True # Export the generated image?
+show_image = True # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
+export_image = False # Export the generated image?
 camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
 sphere_rotation_degrees = 180.0 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
 simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
@@ -422,18 +443,19 @@ elif camera_orientation == 'landscape':
     if device_display_width_pixels < device_display_height_pixels:
        device_display_width_pixels, device_display_height_pixels = device_display_height_pixels, device_display_width_pixels
 
-fieldnames = ['diameter_mm', 'qr_side_length_mm', 'camera_distance_mm', 
-              'focal_length_mm', 'sphere_rotation_degrees', 
-              'camera_width_pixels', 'camera_height_pixels', 
-              'noise_level', 'ambient_light_intensity', 
-              'diffuse_light_intensity', 'filename']
+fieldnames = ['diameter_mm', 'qr_side_length_mm', 'camera_distance_mm',
+              'focal_length_mm', 'sphere_rotation_degrees',
+              'camera_width_pixels', 'camera_height_pixels',
+              'noise_level', 'ambient_light_intensity',
+              'diffuse_light_intensity', 'specular_light_intensity',
+              'specular_exponent', 'filename']
 
 with open(csv_file, 'w', newline='') as csvfile:
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
     writer.writeheader()
 
-    for diameter_mm, qr_side_mm, camera_dist_mm, noise_level, ambient_light_intensity, diffuse_light_intensity in itertools.product(
-            diameters_mm, qr_side_lengths_mm, camera_distances_mm, noise_levels, ambient_light_intensities, diffuse_light_intensities
+    for diameter_mm, qr_side_mm, camera_dist_mm, noise_level, ambient_light_intensity, diffuse_light_intensity, specular_light_intensity, specular_exponent in itertools.product(
+            diameters_mm, qr_side_lengths_mm, camera_distances_mm, noise_levels, ambient_light_intensities, diffuse_light_intensities, specular_light_intensities, specular_exponents
         ):
             filename = (
                 f"sphere_d_{diameter_mm:.1f}mm_"
@@ -441,7 +463,9 @@ with open(csv_file, 'w', newline='') as csvfile:
                 f"cam_{camera_dist_mm:.1f}mm_"
                 f"noise_{noise_level:.1f}_"
                 f"ambient_{ambient_light_intensity:.1f}_"
-                f"diffuse_{diffuse_light_intensity:.1f}.png"
+                f"diffuse_{diffuse_light_intensity:.1f}_"
+                f"specular_{specular_light_intensity:.1f}_"
+                f"exponent_{specular_exponent:.1f}.png"
             )
 
             full_path = render_sphere_with_qr(
@@ -458,7 +482,9 @@ with open(csv_file, 'w', newline='') as csvfile:
                 sensor_height_mm=sensor_height_mm,
                 noise_level=noise_level,
                 ambient_light_intensity=ambient_light_intensity,
-                diffuse_light_intensity=diffuse_light_intensity
+                diffuse_light_intensity=diffuse_light_intensity,
+                specular_light_intensity=specular_light_intensity,
+                specular_exponent=specular_exponent
             )
 
             writer.writerow({
@@ -472,6 +498,8 @@ with open(csv_file, 'w', newline='') as csvfile:
                 'noise_level': noise_level,
                 'ambient_light_intensity': ambient_light_intensity,
                 'diffuse_light_intensity': diffuse_light_intensity,
+                'specular_light_intensity': specular_light_intensity,
+                'specular_exponent': specular_exponent,
                 'filename': full_path
             })
 
