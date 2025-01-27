@@ -4,7 +4,7 @@ from math import radians
 from PIL import Image
 from numba import njit, prange
 import qrcode
-from PIL import Image
+from PIL import Image, ImageFilter
 import csv
 import itertools
 import os
@@ -302,6 +302,19 @@ def render_sphere_with_qr(
         specular_exponent
     )
 
+    # Apply Circle of Confusion-based blur
+    coc_mm = device_parameters[device]['coc_mm']
+    coc_pixels = (coc_mm * camera_width_pixels) / sensor_width_mm
+    sigma = coc_pixels / 2  # Convert diameter to radius (approximated as sigma)
+    
+    # Convert to PIL Image for blurring
+    output_pil = Image.fromarray(output_array)
+    
+    # Apply Gaussian blur if CoC is larger than 0.5 pixels
+    if sigma >= 0.5:
+        blurred_pil = output_pil.filter(ImageFilter.GaussianBlur(radius=sigma))
+        output_array = np.array(blurred_pil)
+
     # Generate filename if not provided
     if filename is None:
         filename = f"sphere_diameter_{sphere_diameter_mm:.2f}mm.png"
@@ -365,7 +378,7 @@ def render_sphere_with_qr(
 # Parameters to iterate through
 diameters_mm = [50]
 qr_side_lengths_mm = [21]
-camera_distances_mm = [100]
+camera_distances_mm = [50]
 noise_levels = [0]
 
 ambient_light_intensities = [0.4]
@@ -379,6 +392,7 @@ output_directory = r"Images"
 # Camera parameters --> Can add information for new devices into here
 device_parameters = {
     'iPhone_13_Pro_Max_Main' : {
+        'coc_mm': 0.007,
         'focal_length_mm' : 5.7,
         'camera_width_pixels' : 3024,
         'camera_height_pixels' : 4032,
@@ -388,6 +402,7 @@ device_parameters = {
         'device_display_height_pixels' : 1284
     },
     'iPhone_13_Pro_Max_Ultrawide': {
+        'coc_mm': 9999,
         'focal_length_mm': 1.57,
         'camera_width_pixels': 3024,
         'camera_height_pixels': 4032,
@@ -395,6 +410,16 @@ device_parameters = {
         'sensor_height_mm': 4.032,
         'device_display_width_pixels': 2778,
         'device_display_height_pixels': 1284
+    },
+    'Oppo_A17_CPH2477' : {
+        'coc_mm': 0.04,
+        'focal_length_mm': 4.0,
+        'camera_width_pixels': 3072,
+        'camera_height_pixels': 4080,
+        'sensor_width_mm': 3.95,
+        'sensor_height_mm': 5.24,
+        'device_display_width_pixels': 1612,
+        'device_display_height_pixels': 720
     }
 }
 show_image = True # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
@@ -402,9 +427,9 @@ export_image = True # Export the generated image?
 camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
 sphere_rotation_degrees = 180.0 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
 simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
-device = 'iPhone_13_Pro_Max_Ultrawide' # Name of device (must be in device_parameters)
+device = 'Oppo_A17_CPH2477' # Name of device (must be in device_parameters)
 viewfinder_aspect_ratio = 3/4 # Aspect ratio of the viewfinder (image width / image height)
-digital_zoom = 1.909090909
+digital_zoom = 1.0
 
 csv_file = "rendered_spheres_mm_TEMP.csv"
 
