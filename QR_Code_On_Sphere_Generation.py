@@ -374,7 +374,7 @@ def render_sphere_with_qr(
 # Parameters to iterate through
 diameters_mm = [50]
 qr_side_lengths_mm = [21]
-camera_distances_mm = [50, 70, 60, 80]
+camera_distances_mm = [80]
 noise_levels = [20]
 
 ambient_light_intensities = [0.4]
@@ -383,7 +383,7 @@ specular_light_intensities = [0.5]  # Control the brightness of the highlight
 specular_exponents = [15]        # Control the size of the highlight (smaller = larger highlight)
 
 # Set your custom output folder here
-output_directory = r"Images"
+output_directory = r"C:\Users\haroldj\OneDrive - Scion\Desktop\Simulation Images"
 
 # Camera parameters --> Can add information for new devices into here
 device_parameters = {
@@ -407,7 +407,7 @@ device_parameters = {
     },
     'Oppo_A17_CPH2477' : {
         'focal_length_mm': 4.0,
-        'camera_width_pixels': 3072,
+        'camera_width_pixels': 1822,
         'camera_height_pixels': 4080,
         'sensor_width_mm': 3.95,
         'sensor_height_mm': 5.24,
@@ -424,10 +424,10 @@ camera_orientation = "portrait" # Orientation of the camera, options are "portra
 sphere_rotation_degrees = 180.0 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
 simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
 device = 'Oppo_A17_CPH2477' # Name of device (must be in device_parameters)
-viewfinder_aspect_ratio = 3/4 # Aspect ratio of the viewfinder (image width / image height)
+viewfinder_aspect_ratio = 1822/4080 # Aspect ratio of the viewfinder (image width / image height) (default 3/4)
 digital_zoom = 1.0
 
-csv_file = "rendered_spheres_mm_TEMP.csv"
+csv_file = "rendered_spheres_mm.csv"
 
 ################### END OF SETTINGS #####################
 
