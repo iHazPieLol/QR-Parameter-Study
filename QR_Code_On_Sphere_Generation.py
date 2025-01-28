@@ -124,13 +124,16 @@ def render_sphere_kernel(
     qr_size_minus_1 = qr_size - 1
     inv_qr_size_minus_1 = 1.0 / qr_size_minus_1 if qr_size_minus_1 != 0 else 0.0
 
+    # Calculate adjusted sensor width based on pixel aspect ratio
+    sensor_width_mm_adjusted = sensor_height_mm * (camera_width_pixels / camera_height_pixels)
+
     for py in prange(camera_height_pixels):
         ndc_y = (py + 0.5) / camera_height_pixels
         sensor_y = (1.0 - 2.0 * ndc_y) * (sensor_height_mm / 2.0)
 
         for px in range(camera_width_pixels):
             ndc_x = (px + 0.5) / camera_width_pixels
-            sensor_x = (2.0 * ndc_x - 1.0) * (sensor_width_mm / 2.0)
+            sensor_x = (2.0 * ndc_x - 1.0) * (sensor_width_mm_adjusted / 2.0) # Use adjusted sensor width
 
             # Ray direction calculation (view vector)
             rx = sensor_x
@@ -143,7 +146,9 @@ def render_sphere_kernel(
             disc = b * b - 4.0 * (oz_sq - radius_sq)
 
             if disc < 0.0:
-                output_array[py, px] = 255
+                output_array[py, px, 0] = 255 # White background for no hit (RGB)
+                output_array[py, px, 1] = 255
+                output_array[py, px, 2] = 255
                 continue
 
             sqrt_disc = math.sqrt(disc)
@@ -151,7 +156,9 @@ def render_sphere_kernel(
             if t_hit < 0.0:
                 t_hit = (-b + sqrt_disc) * 0.5
                 if t_hit < 0.0:
-                    output_array[py, px] = 255
+                    output_array[py, px, 0] = 255 # White background for no hit (RGB)
+                    output_array[py, px, 1] = 255
+                    output_array[py, px, 2] = 255
                     continue
 
             # Intersection point and normal
@@ -186,7 +193,9 @@ def render_sphere_kernel(
                 shade = int(255 * light_intensity)
                 noise = np.random.normal(0, noise_level)
                 shade = min(max(shade + int(noise), 0), 255)
-                output_array[py, px] = shade
+                output_array[py, px, 0] = shade # Grayscale shading (RGB)
+                output_array[py, px, 1] = shade
+                output_array[py, px, 2] = shade
                 continue
 
             # Project onto tangent plane at (0,0,1)
@@ -210,13 +219,17 @@ def render_sphere_kernel(
                 gray = qr_array[qr_v, qr_u] * qr_light
                 noise = np.random.normal(0, noise_level)
                 gray = min(max(int(gray + noise), 0), 255)
-                output_array[py, px] = gray
+                output_array[py, px, 0] = gray # Grayscale QR code (RGB)
+                output_array[py, px, 1] = gray
+                output_array[py, px, 2] = gray
             else:
                 # Shading with noise
                 shade = int(255 * light_intensity)
                 noise = np.random.normal(0, noise_level)
                 shade = min(max(shade + int(noise), 0), 255)
-                output_array[py, px] = shade
+                output_array[py, px, 0] = shade # Grayscale shading (RGB)
+                output_array[py, px, 1] = shade
+                output_array[py, px, 2] = shade
 
 @njit
 def crop_center(img, crop_width, crop_height):
@@ -280,7 +293,7 @@ def render_sphere_with_qr(
     data_to_encode = "www.scionresearch.com"
     qr_array = generate_qr_code_array(data_to_encode)
 
-    # Initialize output image
+    # Initialize output image (RGB)
     output_array = np.zeros((camera_height_pixels, camera_width_pixels, 3), dtype=np.uint8)
 
     # Render 3D sphere with lighting
@@ -321,20 +334,19 @@ def render_sphere_with_qr(
 
     # Apply optical blur only if the sphere is closer than min_focus_distance_mm
     if camera_distance_mm < min_focus_distance_mm and sigma >= 0.5: # Modified condition here
-        output_pil = Image.fromarray(output_array)
+        output_pil = Image.fromarray(output_array.astype(np.uint8)) # Ensure correct dtype
         blurred_pil = output_pil.filter(
             ImageFilter.GaussianBlur(radius=sigma)
         )
         output_array = np.array(blurred_pil)
     # If the sphere is further than min_focus_distance_mm, no blur is applied, and the image remains in focus.
 
-
     # Post-processing pipeline
     if digital_zoom > 1.0:
         crop_w = int(camera_width_pixels / digital_zoom)
         crop_h = int(camera_height_pixels / digital_zoom)
         cropped_array = crop_center(output_array, crop_w, crop_h)
-        cropped_pil = Image.fromarray(cropped_array)
+        cropped_pil = Image.fromarray(cropped_array.astype(np.uint8)) # Ensure correct dtype
         resized_pil = cropped_pil.resize(
             (camera_width_pixels, camera_height_pixels),
             Image.Resampling.LANCZOS
@@ -346,7 +358,7 @@ def render_sphere_with_qr(
         target_width = device_display_width_pixels
         target_height = int(target_width / viewfinder_aspect_ratio)
 
-        output_pil = Image.fromarray(output_array)
+        output_pil = Image.fromarray(output_array.astype(np.uint8)) # Ensure correct dtype
         downsampled_pil = output_pil.resize(
             (target_width, target_height),
             Image.Resampling.LANCZOS
@@ -357,9 +369,9 @@ def render_sphere_with_qr(
             plt.imshow(final_image)
             plt.show()
 
-        output_img = Image.fromarray(final_image, 'RGB')
+        output_img = Image.fromarray(final_image.astype(np.uint8), 'RGB') # Ensure correct dtype
     else:
-        output_img = Image.fromarray(output_array, 'RGB')
+        output_img = Image.fromarray(output_array.astype(np.uint8), 'RGB') # Ensure correct dtype
         if show_image:
             plt.imshow(output_array)
             plt.show()
@@ -376,7 +388,7 @@ def render_sphere_with_qr(
 # Parameters to iterate through
 diameters_mm = [50]
 qr_side_lengths_mm = [21]
-camera_distances_mm = [130] # Modified camera distances to test focus
+camera_distances_mm = [70] # Modified camera distances to test focus
 noise_levels = [20]
 
 ambient_light_intensities = [0.4]
@@ -396,7 +408,10 @@ device_parameters = {
         'sensor_width_mm' : 5.7456,
         'sensor_height_mm' : 7.6608,
         'device_display_width_pixels' : 2778,
-        'device_display_height_pixels' : 1284
+        'device_display_height_pixels' : 1284,
+        'f_stop' : 1.5,
+        'min_focus_distance_mm' : 135,
+        'lens_imperfection_factor' : 1.0
     },
     'iPhone_13_Pro_Max_Ultrawide': {
         'focal_length_mm': 1.57,
@@ -420,13 +435,13 @@ device_parameters = {
         'lens_imperfection_factor' : 1.4
     }
 }
-show_image = True # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
+show_image = False # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
 export_image = True # Export the generated image?
 camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
 sphere_rotation_degrees = 180.0 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
-simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
-device = 'Oppo_A17_CPH2477' # Name of device (must be in device_parameters)
-viewfinder_aspect_ratio = 1822/4080 # Aspect ratio of the viewfinder (image width / image height) (default 3/4)
+simulate_device_viewfinder = False # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
+device = 'iPhone_13_Pro_Max_Main' # Name of device (must be in device_parameters)
+viewfinder_aspect_ratio = 4/3 # Aspect ratio of the viewfinder (image width / image height) (default 3/4)
 digital_zoom = 1.0
 
 csv_file = "rendered_spheres_mm.csv"
