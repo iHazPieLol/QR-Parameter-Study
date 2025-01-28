@@ -275,7 +275,7 @@ def render_sphere_with_qr(
     Render a sphere with QR code using physical camera optics model
     """
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Generate QR code array
     data_to_encode = "www.scionresearch.com"
     qr_array = generate_qr_code_array(data_to_encode)
@@ -306,26 +306,28 @@ def render_sphere_with_qr(
     # Calculate dynamic Circle of Confusion
     aperture_diameter_mm = focal_length_mm / f_stop
     try:
-        coc_mm = (aperture_diameter_mm * focal_length_mm * 
+        coc_mm = (aperture_diameter_mm * focal_length_mm *
                  abs(min_focus_distance_mm - camera_distance_mm)) / \
                  (min_focus_distance_mm * (camera_distance_mm - focal_length_mm))
     except ZeroDivisionError:
         coc_mm = 0.0  # Handle focus at infinity
-    
+
     # Apply lens imperfections and convert to pixels
     coc_mm = abs(coc_mm) * lens_imperfection_factor
     coc_pixels = (coc_mm * camera_width_pixels) / sensor_width_mm
-    
+
     # Convert CoC diameter to Gaussian sigma (FWHM to sigma)
     sigma = coc_pixels / 2.3548 if coc_pixels > 0 else 0
 
-    # Apply optical blur
-    if sigma >= 0.5:
+    # Apply optical blur only if the sphere is closer than min_focus_distance_mm
+    if camera_distance_mm < min_focus_distance_mm and sigma >= 0.5: # Modified condition here
         output_pil = Image.fromarray(output_array)
         blurred_pil = output_pil.filter(
             ImageFilter.GaussianBlur(radius=sigma)
         )
         output_array = np.array(blurred_pil)
+    # If the sphere is further than min_focus_distance_mm, no blur is applied, and the image remains in focus.
+
 
     # Post-processing pipeline
     if digital_zoom > 1.0:
@@ -343,18 +345,18 @@ def render_sphere_with_qr(
     if simulate_device_viewfinder:
         target_width = device_display_width_pixels
         target_height = int(target_width / viewfinder_aspect_ratio)
-        
+
         output_pil = Image.fromarray(output_array)
         downsampled_pil = output_pil.resize(
             (target_width, target_height),
             Image.Resampling.LANCZOS
         )
         final_image = np.array(downsampled_pil)
-        
+
         if show_image:
             plt.imshow(final_image)
             plt.show()
-            
+
         output_img = Image.fromarray(final_image, 'RGB')
     else:
         output_img = Image.fromarray(output_array, 'RGB')
@@ -374,7 +376,7 @@ def render_sphere_with_qr(
 # Parameters to iterate through
 diameters_mm = [50]
 qr_side_lengths_mm = [21]
-camera_distances_mm = [80]
+camera_distances_mm = [60, 80, 100] # Modified camera distances to test focus
 noise_levels = [20]
 
 ambient_light_intensities = [0.4]
