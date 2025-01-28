@@ -8,7 +8,6 @@ from PIL import Image, ImageFilter
 import csv
 import itertools
 import os
-from skimage.transform import resize
 import matplotlib.pyplot as plt
 
 def generate_qr_code_array(data, version=1, error_correction='L', box_size=10, border=1, fill_color="black", back_color="white"):
@@ -439,12 +438,12 @@ show_image = False # Open a window to display the generated image? Needs to be c
 export_image = True # Export the generated image?
 camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
 sphere_rotation_degrees = 180.0 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
-simulate_device_viewfinder = False # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
+simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
 device = 'Oppo_A17_CPH2477' # Name of device (must be in device_parameters)
-viewfinder_aspect_ratio = 4/3 # Aspect ratio of the viewfinder (image width / image height) (default 3/4)
+viewfinder_aspect_ratio = 1612/720 # Aspect ratio of the viewfinder (image width / image height) (default 3/4)
 digital_zoom = 1.0
 
-csv_file = "rendered_spheres_mm.csv"
+csv_file = ".csv"
 
 ################### END OF SETTINGS #####################
 
