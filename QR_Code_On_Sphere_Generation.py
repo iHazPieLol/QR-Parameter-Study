@@ -376,7 +376,7 @@ def render_sphere_with_qr(
 # Parameters to iterate through
 diameters_mm = [50]
 qr_side_lengths_mm = [21]
-camera_distances_mm = [60, 80, 100] # Modified camera distances to test focus
+camera_distances_mm = [130] # Modified camera distances to test focus
 noise_levels = [20]
 
 ambient_light_intensities = [0.4]
