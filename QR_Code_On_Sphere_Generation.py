@@ -386,13 +386,13 @@ def render_sphere_with_qr(
 ###################### SETTINGS ########################
 
 # Parameters to iterate through
-diameters_mm = [50]
+diameters_mm = [50] # Sets sphere diameter
 qr_side_lengths_mm = [21]
-camera_distances_mm = [70] # Modified camera distances to test focus
-noise_levels = [20]
+camera_distances_mm = [280] # Distance of the camera from the front face of the sphere
+noise_levels = [20] # Controls the amount of grain in the image
 
-ambient_light_intensities = [0.4]
-diffuse_light_intensities = [0.6]
+ambient_light_intensities = [0.4] # Non-directional illumination. Soft and doesn't cast shadows. Brightness of the scene
+diffuse_light_intensities = [0.6] # Directional light that casts onto the front face of the code & sphere.
 specular_light_intensities = [0.5]  # Control the brightness of the highlight
 specular_exponents = [15]        # Control the size of the highlight (smaller = larger highlight)
 
@@ -423,8 +423,8 @@ device_parameters = {
         'device_display_height_pixels': 1284
     },
     'Oppo_A17_CPH2477' : {
-        'focal_length_mm': 4.0,
-        'camera_width_pixels': 1822,
+        'focal_length_mm': 4.05,
+        'camera_width_pixels': 3072,
         'camera_height_pixels': 4080,
         'sensor_width_mm': 3.95,
         'sensor_height_mm': 5.24,
@@ -440,7 +440,7 @@ export_image = True # Export the generated image?
 camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
 sphere_rotation_degrees = 180.0 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
 simulate_device_viewfinder = False # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
-device = 'iPhone_13_Pro_Max_Main' # Name of device (must be in device_parameters)
+device = 'Oppo_A17_CPH2477' # Name of device (must be in device_parameters)
 viewfinder_aspect_ratio = 4/3 # Aspect ratio of the viewfinder (image width / image height) (default 3/4)
 digital_zoom = 1.0
 
