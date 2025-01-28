@@ -266,23 +266,24 @@ def render_sphere_with_qr(
     ambient_light_intensity,
     diffuse_light_intensity,
     specular_light_intensity,
-    specular_exponent
+    specular_exponent,
+    f_stop,                   # New: aperture f-number
+    min_focus_distance_mm,        # New: camera focus distance
+    lens_imperfection_factor  # New: optical correction factor
 ):
     """
-    Render a sphere with a QR code sticker using Numba for acceleration.
-    All length units are in millimeters.
+    Render a sphere with QR code using physical camera optics model
     """
-    # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
-
-    # Generate the QR code as a NumPy array
+    
+    # Generate QR code array
     data_to_encode = "www.scionresearch.com"
     qr_array = generate_qr_code_array(data_to_encode)
 
-    # Initialize the output image array (height, width, 3)
+    # Initialize output image
     output_array = np.zeros((camera_height_pixels, camera_width_pixels, 3), dtype=np.uint8)
 
-    # Call the Numba-accelerated rendering kernel
+    # Render 3D sphere with lighting
     render_sphere_kernel(
         output_array,
         qr_array,
@@ -302,84 +303,79 @@ def render_sphere_with_qr(
         specular_exponent
     )
 
-    # Apply Circle of Confusion-based blur
-    coc_mm = device_parameters[device]['coc_mm']
+    # Calculate dynamic Circle of Confusion
+    aperture_diameter_mm = focal_length_mm / f_stop
+    try:
+        coc_mm = (aperture_diameter_mm * focal_length_mm * 
+                 abs(min_focus_distance_mm - camera_distance_mm)) / \
+                 (min_focus_distance_mm * (camera_distance_mm - focal_length_mm))
+    except ZeroDivisionError:
+        coc_mm = 0.0  # Handle focus at infinity
+    
+    # Apply lens imperfections and convert to pixels
+    coc_mm = abs(coc_mm) * lens_imperfection_factor
     coc_pixels = (coc_mm * camera_width_pixels) / sensor_width_mm
-    sigma = coc_pixels / 2  # Convert diameter to radius (approximated as sigma)
     
-    # Convert to PIL Image for blurring
-    output_pil = Image.fromarray(output_array)
-    
-    # Apply Gaussian blur if CoC is larger than 0.5 pixels
+    # Convert CoC diameter to Gaussian sigma (FWHM to sigma)
+    sigma = coc_pixels / 2.3548 if coc_pixels > 0 else 0
+
+    # Apply optical blur
     if sigma >= 0.5:
-        blurred_pil = output_pil.filter(ImageFilter.GaussianBlur(radius=sigma))
+        output_pil = Image.fromarray(output_array)
+        blurred_pil = output_pil.filter(
+            ImageFilter.GaussianBlur(radius=sigma)
+        )
         output_array = np.array(blurred_pil)
 
-    # Generate filename if not provided
-    if filename is None:
-        filename = f"sphere_diameter_{sphere_diameter_mm:.2f}mm.png"
-    
-    # Combine directory and filename
-    full_path = os.path.join(output_dir, filename)
+    # Post-processing pipeline
+    if digital_zoom > 1.0:
+        crop_w = int(camera_width_pixels / digital_zoom)
+        crop_h = int(camera_height_pixels / digital_zoom)
+        cropped_array = crop_center(output_array, crop_w, crop_h)
+        cropped_pil = Image.fromarray(cropped_array)
+        resized_pil = cropped_pil.resize(
+            (camera_width_pixels, camera_height_pixels),
+            Image.Resampling.LANCZOS
+        )
+        output_array = np.array(resized_pil)
 
-    # Perform digital zooming using optimized PIL resize
-    crop_w = int(camera_width_pixels / digital_zoom)
-    crop_h = int(camera_height_pixels / digital_zoom)
-    cropped_array = crop_center(output_array, crop_width=crop_w, crop_height=crop_h)
-    
-    # Convert to PIL Image for fast resizing
-    cropped_pil = Image.fromarray(cropped_array)
-    resized_pil = cropped_pil.resize((camera_width_pixels, camera_height_pixels), 
-                                    Image.Resampling.LANCZOS)
-    output_array = np.array(resized_pil)
-
-    # Downsample and crop the image to match the viewfinder of the phone
+    # Device viewfinder simulation
     if simulate_device_viewfinder:
-        # Calculate target dimensions
-        downsample_width_pixels = device_display_width_pixels
-        downsample_ratio = downsample_width_pixels / camera_width_pixels
-        downsample_height_pixels = int(downsample_ratio * camera_height_pixels)
-        
-        # Use PIL for fast downsampling
-        output_pil = Image.fromarray(output_array)
-        downsampled_pil = output_pil.resize((downsample_width_pixels, downsample_height_pixels),
-                                           Image.Resampling.LANCZOS)
-        downsampled_image = np.array(downsampled_pil)
-
-        if show_image:
-            plt.imshow(downsampled_image)
-            plt.show()
-
-        # Crop to viewfinder aspect ratio
-        target_width = downsample_width_pixels
+        target_width = device_display_width_pixels
         target_height = int(target_width / viewfinder_aspect_ratio)
-        if target_height > downsample_height_pixels:
-            target_height = downsample_height_pixels
-            target_width = int(target_height * viewfinder_aspect_ratio)
+        
+        output_pil = Image.fromarray(output_array)
+        downsampled_pil = output_pil.resize(
+            (target_width, target_height),
+            Image.Resampling.LANCZOS
+        )
+        final_image = np.array(downsampled_pil)
+        
+        if show_image:
+            plt.imshow(final_image)
+            plt.show()
             
-        cropped_final = crop_center(downsampled_image, target_width, target_height)
-        output_img = Image.fromarray(cropped_final, 'RGB')
+        output_img = Image.fromarray(final_image, 'RGB')
     else:
+        output_img = Image.fromarray(output_array, 'RGB')
         if show_image:
             plt.imshow(output_array)
             plt.show()
-        
-        # Convert the NumPy array to a PIL Image
-        output_img = Image.fromarray(output_array, 'RGB')
-    
-    # Save the image
+
+    # Save output
     if export_image:
+        full_path = os.path.join(output_dir, filename)
         output_img.save(full_path, "PNG")
-        print(f"Saved {full_path}")
-        return full_path  # Return full path
+        print(f"Rendered {full_path}")
+        return full_path
 
 ###################### SETTINGS ########################
 
 # Parameters to iterate through
 diameters_mm = [50]
 qr_side_lengths_mm = [21]
-camera_distances_mm = [50]
-noise_levels = [0]
+camera_distances_mm = [50, 70, 60, 80]
+noise_levels = [20]
 
 ambient_light_intensities = [0.4]
 diffuse_light_intensities = [0.6]
@@ -392,7 +388,6 @@ output_directory = r"Images"
 # Camera parameters --> Can add information for new devices into here
 device_parameters = {
     'iPhone_13_Pro_Max_Main' : {
-        'coc_mm': 0.007,
         'focal_length_mm' : 5.7,
         'camera_width_pixels' : 3024,
         'camera_height_pixels' : 4032,
@@ -402,7 +397,6 @@ device_parameters = {
         'device_display_height_pixels' : 1284
     },
     'iPhone_13_Pro_Max_Ultrawide': {
-        'coc_mm': 9999,
         'focal_length_mm': 1.57,
         'camera_width_pixels': 3024,
         'camera_height_pixels': 4032,
@@ -412,14 +406,16 @@ device_parameters = {
         'device_display_height_pixels': 1284
     },
     'Oppo_A17_CPH2477' : {
-        'coc_mm': 0.04,
         'focal_length_mm': 4.0,
         'camera_width_pixels': 3072,
         'camera_height_pixels': 4080,
         'sensor_width_mm': 3.95,
         'sensor_height_mm': 5.24,
         'device_display_width_pixels': 1612,
-        'device_display_height_pixels': 720
+        'device_display_height_pixels': 720,
+        'f_stop' : 1.8,
+        'min_focus_distance_mm' : 80,
+        'lens_imperfection_factor' : 1.4
     }
 }
 show_image = True # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
@@ -444,6 +440,9 @@ csv_file = "rendered_spheres_mm_TEMP.csv"
 # sensor_height_mm --> Same as above, but for the sensor height.
 # device_display_width_pixels --> The number of pixels that make up the phone display
 # device_display_height_pixels --> Similar to above
+# f_stop --> Lens aperature f-number. Controls the amount of light intake and depth of field. Lower = shallower depth of field. Values can be obtained from viewing EXIF metadata. These values are usually constant for a given camera, but some flagship models have the ability to adjust it.
+# min_focus_distance_mm --> Minimum distance that an object from the camera needs to be at in order to stay in focus. If unavailable in the EXIF metadata, this can be measured quite easily by moving the camera closer to an object and noting down when the image starts to blur.
+# lens_imperfection_factor --> A multiplier to account for real-world lens imperfections. This requires manual tuning. Start at 1.0 (ideal lens) and increase slowly in order to increase the amount of blur. Match photos of an identical setup to simulation output to find approximately the correct value.
 
 ################## END OF DESCRIPTIONS OF SETTINGS ###################
 
@@ -455,6 +454,9 @@ sensor_width_mm = device_parameters[device]['sensor_width_mm']
 sensor_height_mm = device_parameters[device]['sensor_height_mm']
 device_display_width_pixels = device_parameters[device]['device_display_width_pixels']
 device_display_height_pixels = device_parameters[device]['device_display_height_pixels']
+f_stop = device_parameters[device]['f_stop']
+min_focus_distance_mm = device_parameters[device]['min_focus_distance_mm']
+lens_imperfection_factor = device_parameters[device]['lens_imperfection_factor']
 
 # Check that orientation of sensor w&h and image w&h matches camera orientation
 if camera_orientation == 'portrait':
@@ -519,7 +521,10 @@ with open(csv_file, 'w', newline='') as csvfile:
                 ambient_light_intensity=ambient_light_intensity,
                 diffuse_light_intensity=diffuse_light_intensity,
                 specular_light_intensity=specular_light_intensity,
-                specular_exponent=specular_exponent
+                specular_exponent=specular_exponent,
+                f_stop=f_stop,                                      # New: aperture f-number
+                min_focus_distance_mm=min_focus_distance_mm,                # New: camera focus distance
+                lens_imperfection_factor=lens_imperfection_factor  # New: optical correction factor
             )
 
             writer.writerow({
