@@ -281,7 +281,8 @@ def render_sphere_with_qr(
     specular_exponent,
     f_stop,                   # New: aperture f-number
     min_focus_distance_mm,        # New: camera focus distance
-    lens_imperfection_factor  # New: optical correction factor
+    lens_imperfection_factor,  # New: optical correction factor
+    viewfinder_aspect_ratio
 ):
     """
     Render a sphere with QR code using physical camera optics model
@@ -353,27 +354,37 @@ def render_sphere_with_qr(
         output_array = np.array(resized_pil)
 
     # Device viewfinder simulation
-    if simulate_device_viewfinder:
-        target_width = device_display_width_pixels
-        target_height = int(target_width / viewfinder_aspect_ratio)
+    if simulate_device_viewfinder == True:
 
-        output_pil = Image.fromarray(output_array.astype(np.uint8)) # Ensure correct dtype
-        downsampled_pil = output_pil.resize(
-            (target_width, target_height),
-            Image.Resampling.LANCZOS
-        )
-        final_image = np.array(downsampled_pil)
+        print(f"Screen height x width: {device_display_height_pixels} x {device_display_width_pixels}")
+        print(f"Output array height x width: {output_array.shape[0]} x {output_array.shape[1]}")
+        
+        if viewfinder_aspect_ratio == 'full_screen':
+            viewfinder_aspect_ratio = device_display_height_pixels / device_display_width_pixels
+        elif camera_orientation == 'landscape':
+            viewfinder_aspect_ratio = 1 / viewfinder_aspect_ratio
 
-        if show_image:
-            plt.imshow(final_image)
-            plt.show()
+        viewfinder_width = int(device_display_width_pixels)
+        viewfinder_height = int(viewfinder_width * viewfinder_aspect_ratio)
+        print(f"Viewfinder width: {viewfinder_width}, Viewfinder height: {viewfinder_height}")
 
-        output_img = Image.fromarray(final_image.astype(np.uint8), 'RGB') # Ensure correct dtype
-    else:
-        output_img = Image.fromarray(output_array.astype(np.uint8), 'RGB') # Ensure correct dtype
-        if show_image:
-            plt.imshow(output_array)
-            plt.show()
+        # Scale image
+        if viewfinder_height >= viewfinder_width:
+            scale = camera_height_pixels / viewfinder_height
+        else:
+            scale = camera_width_pixels / viewfinder_width
+
+        output_pil = Image.fromarray(output_array.astype(np.uint8), 'RGB')
+        downsampled_pil = output_pil.resize((int(output_array.shape[1] / scale), int(output_array.shape[0] / scale)))
+        output_array = np.array(downsampled_pil)
+
+        # Crop image
+        output_array = crop_center(output_array, viewfinder_width, viewfinder_height)
+
+    output_img = Image.fromarray(output_array.astype(np.uint8), 'RGB') # Ensure correct dtype
+    if show_image:
+        plt.imshow(output_array)
+        plt.show()
 
     # Save output
     if export_image:
@@ -385,10 +396,15 @@ def render_sphere_with_qr(
 ###################### SETTINGS ########################
 
 # Parameters to iterate through
-diameters_mm = [50] # Sets sphere diameter
-qr_side_lengths_mm = [21]
-camera_distances_mm = [280] # Distance of the camera from the front face of the sphere
+diameters_mm = [40, 50, 70, 90, 120] # Sets sphere diameter
+qr_side_lengths_mm = [5, 8, 11, 15, 19, 21]
+camera_distances_mm = [50, 70, 90, 110, 130, 150, 170, 190, 210, 230, 250, 270, 290, 310, 330, 350, 370, 390, 410, 430, 450, 470, 490, 510, 530, 550, 570, 590, 610] # Distance of the camera from the front face of the sphere
 noise_levels = [20] # Controls the amount of grain in the image
+
+diameters_mm = [50]
+qr_side_lengths_mm = [21]
+camera_distances_mm = [40, 50, 60, 120, 260]
+noise_levels = [20]
 
 ambient_light_intensities = [0.4] # Non-directional illumination. Soft and doesn't cast shadows. Brightness of the scene
 diffuse_light_intensities = [0.6] # Directional light that casts onto the front face of the code & sphere.
@@ -437,13 +453,13 @@ device_parameters = {
 show_image = False # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
 export_image = True # Export the generated image?
 camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
-sphere_rotation_degrees = 180.0 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
-simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
-device = 'Oppo_A17_CPH2477' # Name of device (must be in device_parameters)
-viewfinder_aspect_ratio = 1612/720 # Aspect ratio of the viewfinder (image width / image height) (default 3/4)
+sphere_rotation_degrees = 180 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
+simulate_device_viewfinder = False # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
+device = 'iPhone_13_Pro_Max_Main' # Name of device (must be in device_parameters)
+viewfinder_aspect_ratio = 'full_screen' # Aspect ratio of the viewfinder (image width / image height) (default 4/3), can optionall select 'full_screen'
 digital_zoom = 1.0
 
-csv_file = ".csv"
+csv_file = "Oppo_Generated_Images.csv"
 
 ################### END OF SETTINGS #####################
 
@@ -461,6 +477,10 @@ csv_file = ".csv"
 # lens_imperfection_factor --> A multiplier to account for real-world lens imperfections. This requires manual tuning. Start at 1.0 (ideal lens) and increase slowly in order to increase the amount of blur. Match photos of an identical setup to simulation output to find approximately the correct value.
 
 ################## END OF DESCRIPTIONS OF SETTINGS ###################
+
+# Compute & display number of configurations
+num_combinations = len(diameters_mm) * len(qr_side_lengths_mm) * len(camera_distances_mm) * len(noise_levels) * len(ambient_light_intensities) * len(diffuse_light_intensities) * len(specular_light_intensities) * len(specular_exponents)
+print(f"Number of combinations: {num_combinations}")
 
 # Get correct information from chosen device
 focal_length_mm = device_parameters[device]['focal_length_mm']
@@ -540,7 +560,8 @@ with open(csv_file, 'w', newline='') as csvfile:
                 specular_exponent=specular_exponent,
                 f_stop=f_stop,                                      # New: aperture f-number
                 min_focus_distance_mm=min_focus_distance_mm,                # New: camera focus distance
-                lens_imperfection_factor=lens_imperfection_factor  # New: optical correction factor
+                lens_imperfection_factor=lens_imperfection_factor,  # New: optical correction factor
+                viewfinder_aspect_ratio=viewfinder_aspect_ratio
             )
 
             writer.writerow({
