@@ -91,7 +91,7 @@ def render_sphere_kernel(
     radius_mm = sphere_diameter_mm / 2.0
 
     # Sphere center in world coordinates (mm)
-    sphere_center_z = camera_distance_mm - focal_length_mm
+    sphere_center_z = (camera_distance_mm + radius_mm) - focal_length_mm
 
     # Camera origin in world coordinates (mm)
     cam_origin_z = -focal_length_mm
