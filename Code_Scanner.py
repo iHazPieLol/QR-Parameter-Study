@@ -4,13 +4,14 @@ from pyzbar.pyzbar import decode
 import pandas as pd
 import cv2
 import threading
+from tqdm import tqdm  # Import tqdm for the progress bar
 
 # Read the CSV file containing image paths and parameters
-csv_path = r"C:\Users\haroldj\OneDrive - scion\Documents\General\QR Code Research\Parameter Study\Virtual Parameter Study\rendered_spheres_mm.csv"  # Update this to your CSV file path
+csv_path = r"C:\Users\haroldj\OneDrive - Scion\Documents\General\QR Code Research\Parameter Study\Virtual Parameter Study\Oppo_Generated_Images.csv"  # Update this to your CSV file path
 df = pd.read_csv(csv_path)
 
 # Set the correct message expected in the QR codes
-correct_message = "https://www.example.com"
+correct_message = "www.scionresearch.com"
 
 # Initialize the QR code readers
 qreader_reader = QReader()
@@ -22,7 +23,7 @@ opencv_correct = []
 pyzbar_correct = []
 
 # Function to run a QR code detector with a timeout
-def detect_with_timeout(detector_func, img, timeout=5):
+def detect_with_timeout(detector_func, img, timeout=2):
     result_container = [None]  # Using a list to store the result as it's mutable
     
     def target():
@@ -54,8 +55,8 @@ def pyzbar_detect(img):
     except:
         return []
 
-# Iterate through each row in the DataFrame
-for row in df.itertuples():
+# Iterate through each row in the DataFrame with a progress bar
+for row in tqdm(df.itertuples(), total=df.shape[0], desc="Processing images"):
     image_path = row.filename
     img = imread(image_path)
 
@@ -67,22 +68,17 @@ for row in df.itertuples():
         pyzbar_correct.append(0)
         continue
 
-    print(f"Processing {image_path}:")
-
     # Detect and decode using QReader with timeout
     qreader_result = detect_with_timeout(qreader_detect, img)
     qreader_match = correct_message in qreader_result if qreader_result is not None else False
-    print(f"  QReader: {qreader_match}")
 
     # Detect and decode using OpenCV with timeout
     opencv_result = detect_with_timeout(opencv_detect, img)
     opencv_match = opencv_result == correct_message if opencv_result is not None else False
-    print(f"  OpenCV: {opencv_match}")
 
     # Detect and decode using pyzbar with timeout
     pyzbar_results = detect_with_timeout(pyzbar_detect, img)
     pyzbar_match = correct_message in pyzbar_results if pyzbar_results is not None else False
-    print(f"  pyzbar: {pyzbar_match}")
 
     # Append results
     qreader_correct.append(int(qreader_match))
@@ -95,6 +91,6 @@ df['OpenCV Correct'] = opencv_correct
 df['pyzbar Correct'] = pyzbar_correct
 
 # Save the updated DataFrame to a new CSV file
-output_csv = 'qr_code_reader_results.csv'
+output_csv = 'Oppo_Scanned_Results.csv'
 df.to_csv(output_csv, index=False)
 print(f"Results saved to {output_csv}")
