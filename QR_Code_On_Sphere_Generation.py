@@ -403,8 +403,7 @@ noise_levels = [20] # Controls the amount of grain in the image
 
 diameters_mm = [50]
 qr_side_lengths_mm = [21]
-camera_distances_mm = [40, 50, 60, 120, 260]
-noise_levels = [20]
+camera_distances_mm = [40, 50, 60, 130, 260]
 
 ambient_light_intensities = [0.4] # Non-directional illumination. Soft and doesn't cast shadows. Brightness of the scene
 diffuse_light_intensities = [0.6] # Directional light that casts onto the front face of the code & sphere.
@@ -425,8 +424,8 @@ device_parameters = {
         'device_display_width_pixels' : 2778,
         'device_display_height_pixels' : 1284,
         'f_stop' : 1.5,
-        'min_focus_distance_mm' : 135,
-        'lens_imperfection_factor' : 1.0
+        'min_focus_distance_mm' : 115,
+        'lens_imperfection_factor' : 0.5
     },
     'iPhone_13_Pro_Max_Ultrawide': {
         'focal_length_mm': 1.57,
@@ -446,7 +445,7 @@ device_parameters = {
         'device_display_width_pixels': 1612,
         'device_display_height_pixels': 720,
         'f_stop' : 1.8,
-        'min_focus_distance_mm' : 80,
+        'min_focus_distance_mm' : 60,
         'lens_imperfection_factor' : 1.4
     }
 }
@@ -454,8 +453,8 @@ show_image = False # Open a window to display the generated image? Needs to be c
 export_image = True # Export the generated image?
 camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
 sphere_rotation_degrees = 180 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
-simulate_device_viewfinder = False # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
-device = 'iPhone_13_Pro_Max_Main' # Name of device (must be in device_parameters)
+simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
+device = 'Oppo_A17_CPH2477' # Name of device (must be in device_parameters)
 viewfinder_aspect_ratio = 'full_screen' # Aspect ratio of the viewfinder (image width / image height) (default 4/3), can optionall select 'full_screen'
 digital_zoom = 1.0
 
