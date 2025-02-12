@@ -415,6 +415,17 @@ diffuse_light_intensities = [0.6] # Directional light that casts onto the front 
 specular_light_intensities = [0.5]  # Control the brightness of the highlight
 specular_exponents = [15] # Controls the size of the highlight (smaller = larger highlight)
 
+# Parameters to iterate through --> Rotation
+diameters_mm = [90] # Sets sphere diameter
+qr_side_lengths_mm = [14] # Sets the side lengths of the QR codes
+camera_distances_mm = [200] # Distance of the camera from the front face of the sphere
+noise_levels = [20] # Controls the amount of grain in the 
+ambient_light_intensities = [0.4] # Non-directional illumination. Soft and doesn't cast shadows. Brightness of the scene
+diffuse_light_intensities = [0.6] # Directional light that casts onto the front face of the code & sphere.
+specular_light_intensities = [0.5]  # Control the brightness of the highlight
+specular_exponents = [15] # Controls the size of the highlight (smaller = larger highlight)
+sphere_rotation_degrees = np.linspace(0, 360, 100) # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
+
 
 
 
@@ -426,7 +437,7 @@ specular_exponents = [15] # Controls the size of the highlight (smaller = larger
 
 
 # Set your custom output folder here
-output_directory = r"C:\Users\haroldj\Downloads\Images"
+output_directory = r"C:\Users\haroldj\Downloads\Rotation Images"
 
 #for item in range(len(camera_distances_mm)):
 #    camera_distances_mm[item] = camera_distances_mm[item] - 6
@@ -470,13 +481,12 @@ device_parameters = {
 show_image = False # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
 export_image = True # Export the generated image?
 camera_orientation = "portrait" # Orientation of the camera, options are "portrait" or "landscape"
-sphere_rotation_degrees = 180 # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
 simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
 device = 'Oppo_A17_CPH2477' # Name of device (must be in device_parameters)
 viewfinder_aspect_ratio = 'full_screen' # Aspect ratio of the viewfinder (image width / image height) (default 4/3), can optionall select 'full_screen'
 digital_zoom = 1.0 # Amount digital zoom to be applied
 
-csv_file = "oppo2.csv"
+csv_file = "oppo_rotation1.csv"
 
 ################### END OF SETTINGS #####################
 
@@ -496,7 +506,7 @@ csv_file = "oppo2.csv"
 ################## END OF DESCRIPTIONS OF SETTINGS ###################
 
 # Compute & display number of configurations
-num_combinations = len(diameters_mm) * len(qr_side_lengths_mm) * len(camera_distances_mm) * len(noise_levels) * len(ambient_light_intensities) * len(diffuse_light_intensities) * len(specular_light_intensities) * len(specular_exponents)
+num_combinations = len(diameters_mm) * len(qr_side_lengths_mm) * len(camera_distances_mm) * len(noise_levels) * len(ambient_light_intensities) * len(diffuse_light_intensities) * len(specular_light_intensities) * len(specular_exponents) * len(sphere_rotation_degrees)
 print(f"Number of combinations: {num_combinations}")
 
 # Get correct information from chosen device
@@ -544,8 +554,8 @@ with open(csv_file, 'w', newline='') as csvfile:
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
     writer.writeheader()
 
-    for diameter_mm, qr_side_mm, camera_dist_mm, noise_level, ambient_light_intensity, diffuse_light_intensity, specular_light_intensity, specular_exponent in itertools.product(
-            diameters_mm, qr_side_lengths_mm, camera_distances_mm, noise_levels, ambient_light_intensities, diffuse_light_intensities, specular_light_intensities, specular_exponents
+    for diameter_mm, qr_side_mm, camera_dist_mm, noise_level, ambient_light_intensity, diffuse_light_intensity, specular_light_intensity, specular_exponent, sphere_rotation_degree in itertools.product(
+            diameters_mm, qr_side_lengths_mm, camera_distances_mm, noise_levels, ambient_light_intensities, diffuse_light_intensities, specular_light_intensities, specular_exponents, sphere_rotation_degrees
         ):
             filename = (
                 f"sphere_d_{diameter_mm:.1f}mm_"
