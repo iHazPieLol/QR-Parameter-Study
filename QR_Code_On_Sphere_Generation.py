@@ -397,23 +397,41 @@ def render_sphere_with_qr(
 
 # Parameters to iterate through
 diameters_mm = [40, 50, 70, 90, 120] # Sets sphere diameter
-qr_side_lengths_mm = [5, 8, 11, 15, 19, 21]
-camera_distances_mm = [50, 70, 90, 110, 130, 150, 170, 190, 210, 230, 250, 270, 290, 310, 330, 350, 370, 390, 410, 430, 450, 470, 490, 510, 530, 550, 570, 590, 610] # Distance of the camera from the front face of the sphere
-noise_levels = [20] # Controls the amount of grain in the image
-
-diameters_mm = [50]
-qr_side_lengths_mm = [21]
-camera_distances_mm = [40, 50, 60, 130, 260]
-
+qr_side_lengths_mm = [5, 8, 11, 15, 19, 21] # Sets the side lengths of the QR codes
+camera_distances_mm = [40, 80, 120, 160] # Distance of the camera from the front face of the sphere
+noise_levels = [20] # Controls the amount of grain in the 
 ambient_light_intensities = [0.4] # Non-directional illumination. Soft and doesn't cast shadows. Brightness of the scene
 diffuse_light_intensities = [0.6] # Directional light that casts onto the front face of the code & sphere.
 specular_light_intensities = [0.5]  # Control the brightness of the highlight
-specular_exponents = [15]        # Control the size of the highlight (smaller = larger highlight)
+specular_exponents = [15] # Controls the size of the highlight (smaller = larger highlight)
+
+# Parameters to iterate through
+diameters_mm = [40, 50, 70, 90, 120] # Sets sphere diameter
+qr_side_lengths_mm = [5, 8, 11, 15, 19, 23] # Sets the side lengths of the QR codes
+camera_distances_mm = [30, 50, 70, 90, 130, 170, 190, 230, 270, 310, 330, 370, 410, 450, 490] # Distance of the camera from the front face of the sphere
+noise_levels = [20] # Controls the amount of grain in the 
+ambient_light_intensities = [0.4] # Non-directional illumination. Soft and doesn't cast shadows. Brightness of the scene
+diffuse_light_intensities = [0.6] # Directional light that casts onto the front face of the code & sphere.
+specular_light_intensities = [0.5]  # Control the brightness of the highlight
+specular_exponents = [15] # Controls the size of the highlight (smaller = larger highlight)
+
+
+
+
+#diameters_mm = [50]
+#qr_side_lengths_mm = [21]
+#camera_distances_mm = [40, 50, 60, 120, 260]
+
+
+
 
 # Set your custom output folder here
-output_directory = r"C:\Users\haroldj\OneDrive - Scion\Desktop\Simulation Images"
+output_directory = r"C:\Users\haroldj\Downloads\Images"
 
-# Camera parameters --> Can add information for new devices into here
+#for item in range(len(camera_distances_mm)):
+#    camera_distances_mm[item] = camera_distances_mm[item] - 6
+
+# Camera parameters --> Add information for new devices into here
 device_parameters = {
     'iPhone_13_Pro_Max_Main' : {
         'focal_length_mm' : 5.7,
@@ -427,7 +445,7 @@ device_parameters = {
         'min_focus_distance_mm' : 115,
         'lens_imperfection_factor' : 0.5
     },
-    'iPhone_13_Pro_Max_Ultrawide': {
+    'iPhone_13_Pro_Max_Ultrawide': { # Note: Misssing some values!
         'focal_length_mm': 1.57,
         'camera_width_pixels': 3024,
         'camera_height_pixels': 4032,
@@ -437,16 +455,16 @@ device_parameters = {
         'device_display_height_pixels': 1284
     },
     'Oppo_A17_CPH2477' : {
-        'focal_length_mm': 4.05,
-        'camera_width_pixels': 3072,
-        'camera_height_pixels': 4080,
+        'focal_length_mm': 4.00,
+        'camera_width_pixels': 3072, #3072
+        'camera_height_pixels': 4080, #4080
         'sensor_width_mm': 3.95,
         'sensor_height_mm': 5.24,
         'device_display_width_pixels': 1612,
         'device_display_height_pixels': 720,
         'f_stop' : 1.8,
-        'min_focus_distance_mm' : 60,
-        'lens_imperfection_factor' : 1.4
+        'min_focus_distance_mm' : 55, # changed 55 to 65
+        'lens_imperfection_factor' : 0.5
     }
 }
 show_image = False # Open a window to display the generated image? Needs to be closed in order for the rest of the script to keep runnning
@@ -456,9 +474,9 @@ sphere_rotation_degrees = 180 # Rotation of the sphere around a vertical axis pa
 simulate_device_viewfinder = True # Use if you want to simulate the image that the viewfinder of a phone would actually see (i.e. only the pixels that are displayed on the screen, not all available camera pixels). This is what the scanning apps on the phones can see.
 device = 'Oppo_A17_CPH2477' # Name of device (must be in device_parameters)
 viewfinder_aspect_ratio = 'full_screen' # Aspect ratio of the viewfinder (image width / image height) (default 4/3), can optionall select 'full_screen'
-digital_zoom = 1.0
+digital_zoom = 1.0 # Amount digital zoom to be applied
 
-csv_file = "Oppo_Generated_Images.csv"
+csv_file = "oppo2.csv"
 
 ################### END OF SETTINGS #####################
 
