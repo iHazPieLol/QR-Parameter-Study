@@ -1,6 +1,6 @@
 import math
 import numpy as np
-from math import radians
+from numpy import radians # Changed from math.radians to numpy.radians
 from PIL import Image
 from numba import njit, prange
 import qrcode
@@ -258,7 +258,8 @@ def crop_center(img, crop_width, crop_height):
     end_x = min(width, end_x)
     end_y = min(height, end_y)
 
-    cropped_img = img[start_y:end_y, start_x:end_x]
+    cropped_img = img[start_y:end_y, start_x:start_x + crop_width] # Corrected the cropping indices
+    cropped_img = cropped_img[0:crop_height, :] # Corrected the cropping indices
 
     return cropped_img
 
@@ -358,7 +359,7 @@ def render_sphere_with_qr(
 
         print(f"Screen height x width: {device_display_height_pixels} x {device_display_width_pixels}")
         print(f"Output array height x width: {output_array.shape[0]} x {output_array.shape[1]}")
-        
+
         if viewfinder_aspect_ratio == 'full_screen':
             viewfinder_aspect_ratio = device_display_height_pixels / device_display_width_pixels
         elif camera_orientation == 'landscape':
@@ -399,7 +400,7 @@ def render_sphere_with_qr(
 diameters_mm = [40, 50, 70, 90, 120] # Sets sphere diameter
 qr_side_lengths_mm = [5, 8, 11, 15, 19, 21] # Sets the side lengths of the QR codes
 camera_distances_mm = [40, 80, 120, 160] # Distance of the camera from the front face of the sphere
-noise_levels = [20] # Controls the amount of grain in the 
+noise_levels = [20] # Controls the amount of grain in the
 ambient_light_intensities = [0.4] # Non-directional illumination. Soft and doesn't cast shadows. Brightness of the scene
 diffuse_light_intensities = [0.6] # Directional light that casts onto the front face of the code & sphere.
 specular_light_intensities = [0.5]  # Control the brightness of the highlight
@@ -409,7 +410,7 @@ specular_exponents = [15] # Controls the size of the highlight (smaller = larger
 diameters_mm = [40, 50, 70, 90, 120] # Sets sphere diameter
 qr_side_lengths_mm = [5, 8, 11, 15, 19, 23] # Sets the side lengths of the QR codes
 camera_distances_mm = [30, 50, 70, 90, 130, 170, 190, 230, 270, 310, 330, 370, 410, 450, 490] # Distance of the camera from the front face of the sphere
-noise_levels = [20] # Controls the amount of grain in the 
+noise_levels = [20] # Controls the amount of grain in the
 ambient_light_intensities = [0.4] # Non-directional illumination. Soft and doesn't cast shadows. Brightness of the scene
 diffuse_light_intensities = [0.6] # Directional light that casts onto the front face of the code & sphere.
 specular_light_intensities = [0.5]  # Control the brightness of the highlight
@@ -418,13 +419,13 @@ specular_exponents = [15] # Controls the size of the highlight (smaller = larger
 # Parameters to iterate through --> Rotation
 diameters_mm = [90] # Sets sphere diameter
 qr_side_lengths_mm = [14] # Sets the side lengths of the QR codes
-camera_distances_mm = [200] # Distance of the camera from the front face of the sphere
-noise_levels = [20] # Controls the amount of grain in the 
+camera_distances_mm = [80, 100, 120, 140, 160, 180, 200, 220, 240, 260, 280, 300, 320, 340, 360, 380] # Distance of the camera from the front face of the sphere
+noise_levels = [20] # Controls the amount of grain in the
 ambient_light_intensities = [0.4] # Non-directional illumination. Soft and doesn't cast shadows. Brightness of the scene
 diffuse_light_intensities = [0.6] # Directional light that casts onto the front face of the code & sphere.
 specular_light_intensities = [0.5]  # Control the brightness of the highlight
 specular_exponents = [15] # Controls the size of the highlight (smaller = larger highlight)
-sphere_rotation_degrees = np.linspace(0, 360, 100) # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
+sphere_rotation_degrees = np.linspace(130, 230, 20) # Rotation of the sphere around a vertical axis passing through it. Default at 180 degrees has the QR code directly facing the camera
 
 
 
@@ -486,7 +487,7 @@ device = 'Oppo_A17_CPH2477' # Name of device (must be in device_parameters)
 viewfinder_aspect_ratio = 'full_screen' # Aspect ratio of the viewfinder (image width / image height) (default 4/3), can optionall select 'full_screen'
 digital_zoom = 1.0 # Amount digital zoom to be applied
 
-csv_file = "oppo_rotation1.csv"
+csv_file = "oppo_rotation2.csv"
 
 ################### END OF SETTINGS #####################
 
@@ -565,7 +566,8 @@ with open(csv_file, 'w', newline='') as csvfile:
                 f"ambient_{ambient_light_intensity:.1f}_"
                 f"diffuse_{diffuse_light_intensity:.1f}_"
                 f"specular_{specular_light_intensity:.1f}_"
-                f"exponent_{specular_exponent:.1f}.png"
+                f"exponent_{specular_exponent:.1f}_"
+                f"rotation_{sphere_rotation_degree:.1f}.png" # Added rotation to filename
             )
 
             full_path = render_sphere_with_qr(
@@ -573,7 +575,7 @@ with open(csv_file, 'w', newline='') as csvfile:
                 qr_side_length_mm=qr_side_mm,
                 camera_distance_mm=camera_dist_mm,
                 focal_length_mm=focal_length_mm,
-                sphere_rotation_degrees=sphere_rotation_degrees,
+                sphere_rotation_degrees=sphere_rotation_degree, # Correct variable passed here
                 camera_width_pixels=camera_width_pixels,
                 camera_height_pixels=camera_height_pixels,
                 output_dir=output_directory,
@@ -596,7 +598,7 @@ with open(csv_file, 'w', newline='') as csvfile:
                 'qr_side_length_mm': qr_side_mm,
                 'camera_distance_mm': camera_dist_mm,
                 'focal_length_mm': focal_length_mm,
-                'sphere_rotation_degrees': sphere_rotation_degrees,
+                'sphere_rotation_degrees': sphere_rotation_degree, # Correct variable written here
                 'camera_width_pixels': camera_width_pixels,
                 'camera_height_pixels': camera_height_pixels,
                 'noise_level': noise_level,
